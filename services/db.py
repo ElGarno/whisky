@@ -177,6 +177,37 @@ def update_whisky_info(whisky_id: int, info_markdown: str):
     conn.close()
 
 
+def update_whisky_fill(whisky_id: int, fill_ml: int):
+    """Update whisky fill level."""
+    conn = get_connection()
+    conn.execute("""
+        UPDATE whiskies SET current_fill_ml = ? WHERE id = ?
+    """, [fill_ml, whisky_id])
+    conn.close()
+
+
+def update_whisky(whisky_id: int, name: str = None, year: int = None,
+                  price: float = None, fill_ml: int = None):
+    """Update whisky details."""
+    conn = get_connection()
+    if name is not None:
+        conn.execute("UPDATE whiskies SET name = ? WHERE id = ?", [name, whisky_id])
+    if year is not None:
+        conn.execute("UPDATE whiskies SET year = ? WHERE id = ?", [year, whisky_id])
+    if price is not None:
+        conn.execute("UPDATE whiskies SET price = ? WHERE id = ?", [price, whisky_id])
+    if fill_ml is not None:
+        conn.execute("UPDATE whiskies SET current_fill_ml = ? WHERE id = ?", [fill_ml, whisky_id])
+    conn.close()
+
+
+def delete_whisky(whisky_id: int):
+    """Delete a whisky from the collection."""
+    conn = get_connection()
+    conn.execute("DELETE FROM whiskies WHERE id = ?", [whisky_id])
+    conn.close()
+
+
 def get_whisky_stats():
     """Get statistics about the whisky collection."""
     conn = get_connection()

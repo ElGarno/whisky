@@ -57,6 +57,40 @@ if whisky:
         st.write(f"**Fill Level:** {fill_pct:.0f}%")
         st.progress(fill_pct / 100)
 
+        # Edit section
+        with st.expander("Edit Whisky"):
+            with st.form("edit_form"):
+                new_fill = st.slider(
+                    "Fill Level (%)",
+                    min_value=0,
+                    max_value=100,
+                    value=int(fill_pct)
+                )
+                new_price = st.number_input(
+                    "Price ($)",
+                    min_value=0.0,
+                    value=float(whisky[5]) if whisky[5] else 0.0,
+                    step=1.0
+                )
+
+                col_save, col_delete = st.columns(2)
+                with col_save:
+                    if st.form_submit_button("Save Changes"):
+                        fill_ml = int(whisky[7] * new_fill / 100)
+                        db.update_whisky(
+                            selected_id,
+                            price=new_price if new_price > 0 else None,
+                            fill_ml=fill_ml
+                        )
+                        st.success("Updated!")
+                        st.rerun()
+
+                with col_delete:
+                    if st.form_submit_button("Delete Whisky", type="secondary"):
+                        db.delete_whisky(selected_id)
+                        st.success("Deleted!")
+                        st.rerun()
+
     with col2:
         st.subheader(whisky[1])  # name
 
