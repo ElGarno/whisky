@@ -36,6 +36,7 @@ def init_db():
             year INTEGER,
             distillery_id INTEGER,
             price DECIMAL(10,2),
+            quantity INTEGER DEFAULT 1,
             current_fill_ml INTEGER,
             bottle_size_ml INTEGER DEFAULT 700,
             image_path VARCHAR,
@@ -43,6 +44,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Migration: add quantity column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE whiskies ADD COLUMN quantity INTEGER DEFAULT 1")
+    except:
+        pass  # Column already exists
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tastings (
@@ -122,7 +129,7 @@ def update_distillery_location(distillery_id: int, latitude: float, longitude: f
 
 # Whisky operations
 def add_whisky(name: str, year: int, distillery_id: int, price: float = None,
-               current_fill_ml: int = 700, bottle_size_ml: int = 700,
+               quantity: int = 1, current_fill_ml: int = 700, bottle_size_ml: int = 700,
                image_path: str = None) -> int:
     """Add a new whisky. Returns whisky ID."""
     conn = get_connection()
@@ -131,10 +138,10 @@ def add_whisky(name: str, year: int, distillery_id: int, price: float = None,
     new_id = max_id + 1
 
     conn.execute("""
-        INSERT INTO whiskies (id, name, year, distillery_id, price, current_fill_ml,
+        INSERT INTO whiskies (id, name, year, distillery_id, price, quantity, current_fill_ml,
                               bottle_size_ml, image_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [new_id, name, year, distillery_id, price, current_fill_ml, bottle_size_ml, image_path])
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [new_id, name, year, distillery_id, price, quantity, current_fill_ml, bottle_size_ml, image_path])
 
     conn.close()
     return new_id
@@ -145,7 +152,8 @@ def get_all_whiskies():
     conn = get_connection()
     result = conn.execute("""
         SELECT w.id, w.name, w.year, d.name as distillery, w.price,
-               w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown
+               w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown,
+               COALESCE(w.quantity, 1) as quantity
         FROM whiskies w
         LEFT JOIN distilleries d ON w.distillery_id = d.id
         ORDER BY w.created_at DESC
@@ -159,7 +167,8 @@ def get_whisky(whisky_id: int):
     conn = get_connection()
     result = conn.execute("""
         SELECT w.id, w.name, w.year, d.name as distillery, d.id as distillery_id,
-               w.price, w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown
+               w.price, w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown,
+               COALESCE(w.quantity, 1) as quantity
         FROM whiskies w
         LEFT JOIN distilleries d ON w.distillery_id = d.id
         WHERE w.id = ?
@@ -187,7 +196,7 @@ def update_whisky_fill(whisky_id: int, fill_ml: int):
 
 
 def update_whisky(whisky_id: int, name: str = None, year: int = None,
-                  price: float = None, fill_ml: int = None):
+                  price: float = None, fill_ml: int = None, quantity: int = None):
     """Update whisky details."""
     conn = get_connection()
     if name is not None:
@@ -198,6 +207,8 @@ def update_whisky(whisky_id: int, name: str = None, year: int = None,
         conn.execute("UPDATE whiskies SET price = ? WHERE id = ?", [price, whisky_id])
     if fill_ml is not None:
         conn.execute("UPDATE whiskies SET current_fill_ml = ? WHERE id = ?", [fill_ml, whisky_id])
+    if quantity is not None:
+        conn.execute("UPDATE whiskies SET quantity = ? WHERE id = ?", [quantity, whisky_id])
     conn.close()
 
 
@@ -214,8 +225,8 @@ def get_whisky_stats():
 
     stats = conn.execute("""
         SELECT
-            COUNT(*) as total,
-            COALESCE(SUM(price), 0) as total_value,
+            COALESCE(SUM(COALESCE(quantity, 1)), 0) as total_bottles,
+            COALESCE(SUM(price * COALESCE(quantity, 1)), 0) as total_value,
             COALESCE(MIN(price), 0) as min_price,
             COALESCE(MAX(price), 0) as max_price,
             COALESCE(AVG(price), 0) as avg_price,

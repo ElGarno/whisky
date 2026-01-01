@@ -96,6 +96,14 @@ if st.session_state.recognition_result:
             help="Optional: Enter the purchase price"
         )
 
+        quantity = st.number_input(
+            "Quantity (bottles)",
+            min_value=1,
+            max_value=100,
+            value=1,
+            help="Number of bottles of this whisky"
+        )
+
         submitted = st.form_submit_button("Save Whisky", type="primary")
 
         if submitted:
@@ -122,6 +130,7 @@ if st.session_state.recognition_result:
                     year=year if year > 0 else None,
                     distillery_id=distillery_id,
                     price=price if price > 0 else None,
+                    quantity=quantity,
                     current_fill_ml=fill_ml_map[fill_level],
                     image_path=image_path
                 )
@@ -170,6 +179,7 @@ with st.expander("Manual Entry Form"):
         m_distillery = st.text_input("Distillery")
         m_year = st.number_input("Age (years)", min_value=0, max_value=100, value=0)
         m_price = st.number_input("Price ($)", min_value=0.0, step=1.0)
+        m_quantity = st.number_input("Quantity (bottles)", min_value=1, max_value=100, value=1)
         m_fill = st.slider("Fill Level (%)", min_value=0, max_value=100, value=100)
 
         if st.form_submit_button("Add Whisky"):
@@ -182,6 +192,7 @@ with st.expander("Manual Entry Form"):
                     year=m_year if m_year > 0 else None,
                     distillery_id=distillery_id,
                     price=m_price if m_price > 0 else None,
+                    quantity=m_quantity,
                     current_fill_ml=int(700 * m_fill / 100)
                 )
 

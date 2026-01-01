@@ -30,7 +30,7 @@ selected_id = st.selectbox(
 whisky = db.get_whisky(selected_id)
 
 if whisky:
-    # whisky: (id, name, year, distillery, distillery_id, price, current_fill_ml, bottle_size_ml, image_path, info_markdown)
+    # whisky: (id, name, year, distillery, distillery_id, price, current_fill_ml, bottle_size_ml, image_path, info_markdown, quantity)
 
     col1, col2 = st.columns([1, 2])
 
@@ -51,6 +51,7 @@ if whisky:
             st.write(f"**Age:** {whisky[2]} years")
         if whisky[5]:  # price
             st.write(f"**Price:** ${whisky[5]:.2f}")
+        st.write(f"**Quantity:** {whisky[10]} bottle(s)")
 
         # Fill level
         fill_pct = (whisky[6] / whisky[7]) * 100 if whisky[7] else 0
@@ -60,6 +61,12 @@ if whisky:
         # Edit section
         with st.expander("Edit Whisky"):
             with st.form("edit_form"):
+                new_quantity = st.number_input(
+                    "Quantity (bottles)",
+                    min_value=1,
+                    max_value=100,
+                    value=int(whisky[10])
+                )
                 new_fill = st.slider(
                     "Fill Level (%)",
                     min_value=0,
@@ -80,7 +87,8 @@ if whisky:
                         db.update_whisky(
                             selected_id,
                             price=new_price if new_price > 0 else None,
-                            fill_ml=fill_ml
+                            fill_ml=fill_ml,
+                            quantity=new_quantity
                         )
                         st.success("Updated!")
                         st.rerun()
@@ -123,11 +131,13 @@ import pandas as pd
 
 data = []
 for w in whiskies:
+    # w: (id, name, year, distillery, price, current_fill_ml, bottle_size_ml, image_path, info_markdown, quantity)
     fill_pct = (w[5] / w[6]) * 100 if w[6] else 0
     data.append({
         "Name": w[1],
         "Distillery": w[3] or "Unknown",
         "Age": w[2] if w[2] else "NAS",
+        "Qty": w[9],
         "Price": f"${w[4]:.0f}" if w[4] else "-",
         "Fill": f"{fill_pct:.0f}%"
     })
