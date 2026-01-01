@@ -1,0 +1,8 @@
+streamlit>=1.28
+duckdb>=0.9
+openai>=1.0
+folium>=0.15
+streamlit-folium>=0.15
+plotly>=5.18
+python-dotenv>=1.0
+Pillow>=10.0
