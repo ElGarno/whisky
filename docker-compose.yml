@@ -2,14 +2,18 @@ version: '3.8'
 
 services:
   whisky:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
     container_name: whisky-app
+    network_mode: "bridge"
     restart: unless-stopped
     ports:
       - "8501:8501"
     volumes:
-      - ./data:/app/data
-      - ./assets:/app/assets
+      - whisky_data:/app/data
+      - whisky_assets:/app/assets
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     healthcheck:
@@ -17,3 +21,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  whisky_data:
+  whisky_assets:
