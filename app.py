@@ -1,27 +1,27 @@
-"""Whisky Tasting Webapp - Main Entry Point."""
+"""Whisky Tasting Webapp - Haupteinstiegspunkt."""
 
 import streamlit as st
 
 st.set_page_config(
-    page_title="Whisky Collection",
+    page_title="Whisky Sammlung",
     page_icon="🥃",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("Whisky Collection")
+st.title("Whisky Sammlung")
 
 st.markdown("""
-Welcome to your whisky collection manager!
+Willkommen bei deinem Whisky-Sammlungsmanager!
 
-Use the sidebar to navigate:
-- **Register Whisky** - Add new bottles via photo recognition
-- **Whisky Info** - View detailed info about your whiskies
-- **Statistics** - Explore your collection analytics
-- **Tasting** - Run tasting sessions with friends
+Nutze die Seitenleiste zur Navigation:
+- **Whisky Registrieren** - Füge neue Flaschen per Fotoerkennung hinzu
+- **Whisky Info** - Detaillierte Infos zu deinen Whiskies
+- **Statistiken** - Erkunde deine Sammlungsanalysen
+- **Verkostung** - Führe Verkostungen mit Freunden durch
 """)
 
-# Show quick stats
+# Zeige Schnellstatistiken
 from services import db
 
 whiskies = db.get_all_whiskies()
@@ -29,9 +29,9 @@ stats = db.get_whisky_stats()
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Total Bottles", len(whiskies))
+    st.metric("Flaschen gesamt", len(whiskies))
 with col2:
-    st.metric("Total Value", f"${stats[1]:.0f}" if stats[1] else "$0")
+    st.metric("Gesamtwert", f"{stats[1]:.0f} €" if stats[1] else "0 €")
 with col3:
     avg_price = stats[4] if stats[4] else 0
-    st.metric("Avg Price", f"${avg_price:.0f}")
+    st.metric("Durchschnittspreis", f"{avg_price:.0f} €")

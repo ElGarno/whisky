@@ -1,4 +1,4 @@
-"""OpenAI integration for whisky recognition and content generation."""
+"""OpenAI Integration für Whisky-Erkennung und Content-Generierung."""
 
 import os
 import json
@@ -13,14 +13,14 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def encode_image(image_bytes: bytes) -> str:
-    """Encode image bytes to base64."""
+    """Kodiere Bilddaten als Base64."""
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
 def analyze_whisky_photo(image_bytes: bytes) -> dict:
     """
-    Analyze a whisky bottle photo using GPT-4 Vision.
-    Returns: {name, year, distillery, fill_level, confidence}
+    Analysiere ein Whisky-Flaschen-Foto mit GPT-4 Vision.
+    Gibt zurück: {name, year, distillery, fill_level, confidence}
     """
     base64_image = encode_image(image_bytes)
 
@@ -32,15 +32,15 @@ def analyze_whisky_photo(image_bytes: bytes) -> dict:
                 "content": [
                     {
                         "type": "text",
-                        "text": """Analyze this whisky bottle photo and extract the following information.
-Return a JSON object with these fields:
-- name: The full whisky name (brand and expression, e.g. "Lagavulin 16 Year Old")
-- year: The age statement as a number (e.g. 16), or null if not visible
-- distillery: The distillery name (e.g. "Lagavulin")
-- fill_level: Estimate how full the bottle is. Use one of: "full", "three_quarters", "half", "quarter", "near_empty"
-- confidence: Your confidence in this identification from 0.0 to 1.0
+                        "text": """Analysiere dieses Whisky-Flaschen-Foto und extrahiere folgende Informationen.
+Gib ein JSON-Objekt mit diesen Feldern zurück:
+- name: Der vollständige Whisky-Name (Marke und Ausdruck, z.B. "Lagavulin 16 Year Old")
+- year: Die Altersangabe als Zahl (z.B. 16), oder null wenn nicht sichtbar
+- distillery: Der Name der Brennerei (z.B. "Lagavulin")
+- fill_level: Schätze wie voll die Flasche ist. Verwende: "full", "three_quarters", "half", "quarter", "near_empty"
+- confidence: Deine Sicherheit bei dieser Identifikation von 0.0 bis 1.0
 
-Only return the JSON object, no other text."""
+Gib nur das JSON-Objekt zurück, keinen anderen Text."""
                     },
                     {
                         "type": "image_url",
@@ -56,7 +56,7 @@ Only return the JSON object, no other text."""
 
     content = response.choices[0].message.content.strip()
 
-    # Parse JSON from response (handle markdown code blocks)
+    # Parse JSON aus Antwort (behandle Markdown Code-Blöcke)
     if content.startswith("```"):
         content = content.split("```")[1]
         if content.startswith("json"):
@@ -68,34 +68,35 @@ Only return the JSON object, no other text."""
 
 def generate_whisky_info(name: str, distillery: str, year: int = None) -> str:
     """
-    Generate an engaging markdown info page about a whisky.
+    Generiere eine ansprechende Markdown-Infoseite über einen Whisky.
     """
-    year_text = f"{year} Year Old" if year else ""
+    year_text = f"{year} Jahre alt" if year else ""
 
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": f"""Write an engaging markdown page about {name} from {distillery} distillery.
+                "content": f"""Schreibe eine ansprechende Markdown-Seite über {name} von der {distillery} Brennerei.
+Schreibe auf Deutsch!
 
-Include these sections:
-## About {distillery}
-Brief history of the distillery (2-3 sentences)
+Füge diese Abschnitte ein:
+## Über {distillery}
+Kurze Geschichte der Brennerei (2-3 Sätze)
 
-## Tasting Notes
-- **Nose**: Key aromas
-- **Palate**: Flavor profile
-- **Finish**: How it ends
+## Verkostungsnotizen
+- **Nase**: Wichtige Aromen
+- **Gaumen**: Geschmacksprofil
+- **Abgang**: Wie er endet
 
-## Fun Facts
-2-3 interesting facts about this whisky or distillery
+## Wissenswertes
+2-3 interessante Fakten über diesen Whisky oder die Brennerei
 
-## Food Pairings
-3-4 recommended food pairings
+## Essensempfehlungen
+3-4 empfohlene Speisen die gut dazu passen
 
-Keep it concise (300-400 words total). Use bullet points where appropriate.
-Do not include a title heading at the start - it will be added separately."""
+Halte es prägnant (300-400 Wörter insgesamt). Verwende Aufzählungspunkte wo angemessen.
+Füge keine Titelüberschrift am Anfang ein - diese wird separat hinzugefügt."""
             }
         ],
         max_tokens=1000
@@ -106,12 +107,12 @@ Do not include a title heading at the start - it will be added separately."""
 
 def suggest_tasting_order(whiskies: list[dict]) -> list[dict]:
     """
-    Suggest tasting orders for a list of whiskies.
-    Input: List of dicts with {name, distillery, year}
-    Returns: List of 3 suggested orders with explanations
+    Schlage Verkostungsreihenfolgen für eine Liste von Whiskies vor.
+    Input: Liste von Dicts mit {name, distillery, year}
+    Gibt zurück: Liste von 3 vorgeschlagenen Reihenfolgen mit Erklärungen
     """
     whisky_list = "\n".join([
-        f"- {w['name']} ({w.get('distillery', 'Unknown')}, {w.get('year', 'NAS')} years)"
+        f"- {w['name']} ({w.get('distillery', 'Unbekannt')}, {w.get('year', 'NAS')} Jahre)"
         for w in whiskies
     ])
 
@@ -120,27 +121,28 @@ def suggest_tasting_order(whiskies: list[dict]) -> list[dict]:
         messages=[
             {
                 "role": "user",
-                "content": f"""I have these whiskies for a tasting:
+                "content": f"""Ich habe diese Whiskies für eine Verkostung:
 {whisky_list}
 
-Suggest 3 different tasting orders. Consider these principles:
-- Light before heavy
-- Younger before older (usually)
-- Unpeated before peated
-- Lower ABV before higher ABV
-- Sweet before smoky
+Schlage 3 verschiedene Verkostungsreihenfolgen vor. Beachte diese Prinzipien:
+- Leicht vor schwer
+- Jünger vor älter (normalerweise)
+- Ungetorft vor getorft
+- Niedrigerer Alkoholgehalt vor höherem
+- Süß vor rauchig
 
-For each order, return a JSON array with 3 objects:
+Für jede Reihenfolge, gib ein JSON-Array mit 3 Objekten zurück:
 [
   {{
-    "order_name": "Classic Progression",
+    "order_name": "Klassische Progression",
     "whisky_names": ["name1", "name2", ...],
-    "explanation": "Why this order works..."
+    "explanation": "Warum diese Reihenfolge funktioniert..."
   }},
   ...
 ]
 
-Only return the JSON array, no other text."""
+Schreibe die Erklärungen auf Deutsch!
+Gib nur das JSON-Array zurück, keinen anderen Text."""
             }
         ],
         max_tokens=1000
@@ -148,7 +150,7 @@ Only return the JSON array, no other text."""
 
     content = response.choices[0].message.content.strip()
 
-    # Parse JSON from response
+    # Parse JSON aus Antwort
     if content.startswith("```"):
         content = content.split("```")[1]
         if content.startswith("json"):
@@ -161,7 +163,7 @@ Only return the JSON array, no other text."""
 def generate_tasting_summary(ratings: list[dict], whiskies: list[str],
                               participants: list[str]) -> str:
     """
-    Generate an AI summary of a tasting session.
+    Generiere eine KI-Zusammenfassung einer Verkostungs-Session.
     """
     ratings_text = "\n".join([
         f"- {r['participant']}: {r['whisky']} = {r['score']}/10" +
@@ -174,30 +176,31 @@ def generate_tasting_summary(ratings: list[dict], whiskies: list[str],
         messages=[
             {
                 "role": "user",
-                "content": f"""Analyze this whisky tasting session and write a fun summary.
+                "content": f"""Analysiere diese Whisky-Verkostung und schreibe eine unterhaltsame Zusammenfassung.
+Schreibe auf Deutsch!
 
-Participants: {', '.join(participants)}
-Whiskies tasted: {', '.join(whiskies)}
+Teilnehmer: {', '.join(participants)}
+Verkostete Whiskies: {', '.join(whiskies)}
 
-Ratings:
+Bewertungen:
 {ratings_text}
 
-Write a markdown summary including:
-## Tasting Results
+Schreibe eine Markdown-Zusammenfassung mit:
+## Verkostungsergebnisse
 
-### The Winner
-Which whisky had the highest average score?
+### Der Gewinner
+Welcher Whisky hatte die höchste Durchschnittsbewertung?
 
-### Most Divisive
-Which whisky had the biggest score variance?
+### Am kontroversesten
+Welcher Whisky hatte die größte Varianz in den Bewertungen?
 
-### Participant Profiles
-Brief fun characterization of each participant's preferences based on their ratings
+### Teilnehmerprofile
+Kurze, unterhaltsame Charakterisierung der Vorlieben jedes Teilnehmers basierend auf ihren Bewertungen
 
-### Interesting Patterns
-Any notable patterns or surprises in the ratings
+### Interessante Muster
+Bemerkenswerte Muster oder Überraschungen in den Bewertungen
 
-Keep it fun and engaging, about 200-300 words."""
+Halte es unterhaltsam und ansprechend, etwa 200-300 Wörter."""
             }
         ],
         max_tokens=800
@@ -208,27 +211,70 @@ Keep it fun and engaging, about 200-300 words."""
 
 def get_distillery_location(distillery_name: str) -> dict | None:
     """
-    Get the geographic coordinates of a distillery.
-    Returns: {latitude, longitude, region, country} or None
+    Ermittle die geografischen Koordinaten einer Brennerei.
+    Gibt zurück: {latitude, longitude, region, country} oder None
     """
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": f"""What are the geographic coordinates of {distillery_name} distillery?
+                "content": f"""Was sind die geografischen Koordinaten der {distillery_name} Brennerei?
 
-Return a JSON object with:
-- latitude: decimal number
-- longitude: decimal number
-- region: the whisky region (e.g. "Islay", "Speyside", "Highland", "Kentucky", etc.)
-- country: the country (e.g. "Scotland", "USA", "Japan", etc.)
+Gib ein JSON-Objekt zurück mit:
+- latitude: Dezimalzahl
+- longitude: Dezimalzahl
+- region: Die Whisky-Region (z.B. "Islay", "Speyside", "Highland", "Kentucky", etc.)
+- country: Das Land (z.B. "Schottland", "USA", "Japan", etc.)
 
-If you don't know the exact location, provide your best estimate for a well-known distillery.
-Only return the JSON object, no other text."""
+Wenn du den genauen Standort nicht kennst, gib deine beste Schätzung für eine bekannte Brennerei an.
+Gib nur das JSON-Objekt zurück, keinen anderen Text."""
             }
         ],
         max_tokens=200
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        return None
+
+
+def estimate_whisky_price(name: str, distillery: str, year: int = None) -> dict | None:
+    """
+    Schätze den Marktpreis eines Whiskys basierend auf aktuellen Marktdaten.
+    Gibt zurück: {price_eur, price_range_min, price_range_max, source_info} oder None
+    """
+    year_text = f"{year} Jahre alt" if year else "ohne Altersangabe"
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Was ist der ungefähre Marktpreis für den Whisky "{name}" von {distillery} ({year_text})?
+
+Recherchiere basierend auf deinem Wissen über aktuelle Whisky-Preise in Deutschland/Europa.
+
+Gib ein JSON-Objekt zurück mit:
+- price_eur: Der geschätzte Durchschnittspreis in Euro (als Zahl)
+- price_range_min: Untere Preisspanne in Euro
+- price_range_max: Obere Preisspanne in Euro
+- source_info: Kurze Info woher die Schätzung stammt (z.B. "Basierend auf typischen Einzelhandelspreisen")
+
+Falls der Whisky sehr selten oder unbekannt ist, schätze basierend auf ähnlichen Whiskys.
+Gib nur das JSON-Objekt zurück, keinen anderen Text."""
+            }
+        ],
+        max_tokens=300
     )
 
     content = response.choices[0].message.content.strip()

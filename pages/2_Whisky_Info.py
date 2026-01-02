@@ -1,4 +1,4 @@
-"""View detailed information about whiskies."""
+"""Detaillierte Informationen zu Whiskies anzeigen."""
 
 import streamlit as st
 import sys
@@ -8,25 +8,25 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
 
 st.set_page_config(page_title="Whisky Info", page_icon="📖", layout="wide")
-st.title("Whisky Information")
+st.title("Whisky Informationen")
 
-# Get all whiskies
+# Alle Whiskies abrufen
 whiskies = db.get_all_whiskies()
 
 if not whiskies:
-    st.info("No whiskies in your collection yet. Add some on the Register page!")
+    st.info("Noch keine Whiskies in deiner Sammlung. Füge welche auf der Registrieren-Seite hinzu!")
     st.stop()
 
-# Create selection options
-whisky_options = {w[0]: f"{w[1]} ({w[3] or 'Unknown'})" for w in whiskies}
+# Auswahloptionen erstellen
+whisky_options = {w[0]: f"{w[1]} ({w[3] or 'Unbekannt'})" for w in whiskies}
 
 selected_id = st.selectbox(
-    "Select a whisky",
+    "Wähle einen Whisky",
     options=list(whisky_options.keys()),
     format_func=lambda x: whisky_options[x]
 )
 
-# Get selected whisky details
+# Ausgewählte Whisky-Details abrufen
 whisky = db.get_whisky(selected_id)
 
 if whisky:
@@ -35,46 +35,46 @@ if whisky:
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        # Show image if available
+        # Bild anzeigen falls verfügbar
         if whisky[8]:  # image_path
             try:
                 st.image(whisky[8], caption=whisky[1], width=250)
             except Exception:
-                st.info("Image not available")
+                st.info("Bild nicht verfügbar")
         else:
-            st.info("No image")
+            st.info("Kein Bild")
 
-        # Quick stats
+        # Schnellinfos
         st.subheader("Details")
-        st.write(f"**Distillery:** {whisky[3] or 'Unknown'}")
+        st.write(f"**Brennerei:** {whisky[3] or 'Unbekannt'}")
         if whisky[2]:  # year
-            st.write(f"**Age:** {whisky[2]} years")
+            st.write(f"**Alter:** {whisky[2]} Jahre")
         if whisky[5]:  # price
-            st.write(f"**Price:** ${whisky[5]:.2f}")
-        st.write(f"**Quantity:** {whisky[10]} bottle(s)")
+            st.write(f"**Preis:** {whisky[5]:.2f} €")
+        st.write(f"**Anzahl:** {whisky[10]} Flasche(n)")
 
-        # Fill level
+        # Füllstand
         fill_pct = (whisky[6] / whisky[7]) * 100 if whisky[7] else 0
-        st.write(f"**Fill Level:** {fill_pct:.0f}%")
+        st.write(f"**Füllstand:** {fill_pct:.0f}%")
         st.progress(fill_pct / 100)
 
-        # Edit section
-        with st.expander("Edit Whisky"):
+        # Bearbeiten-Bereich
+        with st.expander("Whisky bearbeiten"):
             with st.form("edit_form"):
                 new_quantity = st.number_input(
-                    "Quantity (bottles)",
+                    "Anzahl (Flaschen)",
                     min_value=1,
                     max_value=100,
                     value=int(whisky[10])
                 )
                 new_fill = st.slider(
-                    "Fill Level (%)",
+                    "Füllstand (%)",
                     min_value=0,
                     max_value=100,
                     value=int(fill_pct)
                 )
                 new_price = st.number_input(
-                    "Price ($)",
+                    "Preis (€)",
                     min_value=0.0,
                     value=float(whisky[5]) if whisky[5] else 0.0,
                     step=1.0
@@ -82,7 +82,7 @@ if whisky:
 
                 col_save, col_delete = st.columns(2)
                 with col_save:
-                    if st.form_submit_button("Save Changes"):
+                    if st.form_submit_button("Änderungen speichern"):
                         fill_ml = int(whisky[7] * new_fill / 100)
                         db.update_whisky(
                             selected_id,
@@ -90,27 +90,27 @@ if whisky:
                             fill_ml=fill_ml,
                             quantity=new_quantity
                         )
-                        st.success("Updated!")
+                        st.success("Aktualisiert!")
                         st.rerun()
 
                 with col_delete:
-                    if st.form_submit_button("Delete Whisky", type="secondary"):
+                    if st.form_submit_button("Whisky löschen", type="secondary"):
                         db.delete_whisky(selected_id)
-                        st.success("Deleted!")
+                        st.success("Gelöscht!")
                         st.rerun()
 
     with col2:
         st.subheader(whisky[1])  # name
 
-        # Show info markdown
+        # Info Markdown anzeigen
         if whisky[9]:  # info_markdown
             st.markdown(whisky[9])
         else:
-            st.info("No info generated yet.")
+            st.info("Noch keine Infos generiert.")
 
-        # Regenerate button
-        if st.button("Regenerate Info"):
-            with st.spinner("Generating new info..."):
+        # Neu generieren Button
+        if st.button("Infos neu generieren"):
+            with st.spinner("Generiere neue Infos..."):
                 try:
                     info = ai.generate_whisky_info(
                         whisky[1],  # name
@@ -118,14 +118,14 @@ if whisky:
                         whisky[2]   # year
                     )
                     db.update_whisky_info(selected_id, info)
-                    st.success("Info regenerated!")
+                    st.success("Infos neu generiert!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Fehler: {e}")
 
-# Show all whiskies in a table
+# Alle Whiskies in einer Tabelle anzeigen
 st.divider()
-st.subheader("Collection Overview")
+st.subheader("Sammlungsübersicht")
 
 import pandas as pd
 
@@ -135,11 +135,11 @@ for w in whiskies:
     fill_pct = (w[5] / w[6]) * 100 if w[6] else 0
     data.append({
         "Name": w[1],
-        "Distillery": w[3] or "Unknown",
-        "Age": w[2] if w[2] else "NAS",
-        "Qty": w[9],
-        "Price": f"${w[4]:.0f}" if w[4] else "-",
-        "Fill": f"{fill_pct:.0f}%"
+        "Brennerei": w[3] or "Unbekannt",
+        "Alter": w[2] if w[2] else "NAS",
+        "Anz.": w[9],
+        "Preis": f"{w[4]:.0f} €" if w[4] else "-",
+        "Füllstand": f"{fill_pct:.0f}%"
     })
 
 df = pd.DataFrame(data)
