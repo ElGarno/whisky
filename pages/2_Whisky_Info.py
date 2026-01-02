@@ -3,6 +3,7 @@
 import streamlit as st
 import sys
 from pathlib import Path
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
@@ -39,6 +40,20 @@ if whisky:
         if whisky[8]:  # image_path
             try:
                 st.image(whisky[8], caption=whisky[1], width=250)
+                # Bild-Rotation Buttons
+                rot_left, rot_right = st.columns(2)
+                with rot_left:
+                    if st.button("↶ Links", key="rot_left"):
+                        img = Image.open(whisky[8])
+                        img = img.rotate(90, expand=True)
+                        img.save(whisky[8])
+                        st.rerun()
+                with rot_right:
+                    if st.button("↷ Rechts", key="rot_right"):
+                        img = Image.open(whisky[8])
+                        img = img.rotate(-90, expand=True)
+                        img.save(whisky[8])
+                        st.rerun()
             except Exception:
                 st.info("Bild nicht verfügbar")
         else:
