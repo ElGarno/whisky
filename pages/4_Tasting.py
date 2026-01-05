@@ -21,6 +21,11 @@ if "suggested_orders" not in st.session_state:
     st.session_state.suggested_orders = None
 if "chosen_order" not in st.session_state:
     st.session_state.chosen_order = None
+# Random selection state
+if "random_selection_result" not in st.session_state:
+    st.session_state.random_selection_result = None
+if "random_count" not in st.session_state:
+    st.session_state.random_count = 4
 
 # Whiskies abrufen
 whiskies = db.get_all_whiskies()
@@ -42,14 +47,121 @@ with tab1:
         # Schritt 1: Whiskies auswählen
         st.write("**Schritt 1: Whiskies auswählen**")
 
+        # Create whisky lookup for display
         whisky_options = {w[0]: f"{w[1]} ({w[3] or 'Unbekannt'})" for w in whiskies}
-        selected_ids = st.multiselect(
-            "Wähle Whiskies für die Verkostung",
-            options=list(whisky_options.keys()),
-            format_func=lambda x: whisky_options[x],
-            default=st.session_state.selected_whiskies
-        )
-        st.session_state.selected_whiskies = selected_ids
+
+        # Tabbed selection interface
+        selection_tab1, selection_tab2 = st.tabs(["Zufällige Auswahl", "Manuelle Auswahl"])
+
+        with selection_tab1:
+            st.write("Lass die KI eine vielfältige Auswahl für dich treffen!")
+
+            # Check if manual selection has modified the state
+            if st.session_state.random_selection_result:
+                random_ids = set(st.session_state.random_selection_result['selected_whisky_ids'])
+                current_ids = set(st.session_state.selected_whiskies)
+
+                if random_ids != current_ids:
+                    # Selection was manually modified, clear random result
+                    st.session_state.random_selection_result = None
+
+            # Calculate max whiskies
+            max_available = len(whiskies)
+            if max_available < 2:
+                st.warning("Nicht genug Whiskies verfügbar! Füge mindestens 2 hinzu.")
+            else:
+                col1, col2 = st.columns([2, 1])
+
+                with col1:
+                    num_whiskies = st.number_input(
+                        "Anzahl Whiskies",
+                        min_value=2,
+                        max_value=min(10, max_available),
+                        value=min(st.session_state.random_count, max_available),
+                        help="Wähle zwischen 2 und 10 Whiskies"
+                    )
+                    st.session_state.random_count = num_whiskies
+
+                with col2:
+                    st.write("")  # Spacing
+                    num_participants = len(st.session_state.participants) if st.session_state.participants else 1
+                    if num_participants > 5:
+                        st.caption("Fast leere Flaschen werden ausgeschlossen")
+
+                # Buttons row
+                btn_col1, btn_col2 = st.columns(2)
+
+                with btn_col1:
+                    if st.button("KI-Auswahl starten", type="primary", use_container_width=True):
+                        num_participants = len(st.session_state.participants) if st.session_state.participants else 1
+                        eligible = db.get_whiskies_for_random_selection(num_participants)
+
+                        if len(eligible) < num_whiskies:
+                            st.error(f"Nur {len(eligible)} Whiskies verfügbar, aber {num_whiskies} angefragt!")
+                        else:
+                            eligible_dicts = [
+                                {"id": w[0], "name": w[1], "year": w[2], "distillery": w[3]}
+                                for w in eligible
+                            ]
+
+                            with st.spinner("KI wählt vielfältige Whiskies aus..."):
+                                try:
+                                    result = ai.select_random_whiskies(eligible_dicts, num_whiskies)
+                                    st.session_state.random_selection_result = result
+                                    st.session_state.selected_whiskies = result['selected_whisky_ids']
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Fehler: {e}")
+
+                with btn_col2:
+                    if st.session_state.random_selection_result:
+                        if st.button("Neu würfeln", use_container_width=True):
+                            num_participants = len(st.session_state.participants) if st.session_state.participants else 1
+                            eligible = db.get_whiskies_for_random_selection(num_participants)
+                            eligible_dicts = [
+                                {"id": w[0], "name": w[1], "year": w[2], "distillery": w[3]}
+                                for w in eligible
+                            ]
+
+                            with st.spinner("Würfle neu..."):
+                                try:
+                                    result = ai.select_random_whiskies(eligible_dicts, num_whiskies)
+                                    st.session_state.random_selection_result = result
+                                    st.session_state.selected_whiskies = result['selected_whisky_ids']
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Fehler: {e}")
+
+                # Display current random selection
+                if st.session_state.random_selection_result:
+                    result = st.session_state.random_selection_result
+                    st.success(f"{len(result['selected_whisky_ids'])} Whiskies ausgewählt")
+
+                    st.write("**Ausgewählte Whiskies:**")
+                    for i, name in enumerate(result['selected_whisky_names'], 1):
+                        profile = result['profiles'].get(name, "")
+                        st.write(f"{i}. **{name}** - _{profile}_")
+
+                    with st.expander("Warum diese Auswahl?"):
+                        st.write(result['diversity_explanation'])
+
+        with selection_tab2:
+            st.write("Wähle Whiskies manuell aus der Liste.")
+
+            selected_ids = st.multiselect(
+                "Wähle Whiskies für die Verkostung",
+                options=list(whisky_options.keys()),
+                format_func=lambda x: whisky_options[x],
+                default=st.session_state.selected_whiskies,
+                key="manual_selection"
+            )
+            # Update state when manual selection changes
+            if selected_ids != st.session_state.selected_whiskies:
+                st.session_state.selected_whiskies = selected_ids
+                st.session_state.random_selection_result = None  # Clear random result
+
+        # Reference to selected IDs for later steps
+        selected_ids = st.session_state.selected_whiskies
 
         # Schritt 2: Teilnehmer hinzufügen
         st.write("**Schritt 2: Teilnehmer hinzufügen**")
@@ -115,6 +227,7 @@ with tab1:
                     st.session_state.participants = []
                     st.session_state.suggested_orders = None
                     st.session_state.chosen_order = None
+                    st.session_state.random_selection_result = None
 
                     st.success(f"Verkostung '{tasting_name}' erstellt!")
                     st.rerun()

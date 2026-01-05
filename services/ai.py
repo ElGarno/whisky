@@ -289,3 +289,102 @@ Gib nur das JSON-Objekt zurück, keinen anderen Text."""
         return json.loads(content)
     except json.JSONDecodeError:
         return None
+
+
+def select_random_whiskies(eligible_whiskies: list[dict], count: int) -> dict:
+    """
+    KI-gestützte Auswahl von vielfältigen Whiskies für eine Verkostung.
+
+    Args:
+        eligible_whiskies: Liste von Dicts mit {id, name, year, distillery}
+        count: Anzahl der auszuwählenden Whiskies (2-10)
+
+    Returns:
+        {
+            "selected_whisky_ids": [int, ...],
+            "selected_whisky_names": [str, ...],
+            "diversity_explanation": "Begründung für die Auswahl...",
+            "profiles": {"Name": "Geschmacksprofil", ...}
+        }
+    """
+    whisky_list = "\n".join([
+        f"- {w['name']} ({w.get('distillery', 'Unbekannt')}, {w.get('year', 'NAS')} Jahre)"
+        for w in eligible_whiskies
+    ])
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Wähle {count} Whiskies aus dieser Liste für eine vielfältige Verkostung:
+
+{whisky_list}
+
+Wähle Whiskies mit maximaler Vielfalt:
+- Unterschiedliche Brennereien bevorzugen (nicht mehrere vom gleichen Hersteller)
+- Unterschiedliche Geschmacksprofile (getorft vs. süß vs. fruchtig vs. würzig vs. maritim)
+- Verschiedene Altersangaben wenn möglich
+- Unterschiedliche Regionen (Islay, Speyside, Highland, Lowland, Campbeltown, etc.)
+
+Gib ein JSON-Objekt zurück:
+{{
+  "selected_whisky_names": ["Name1", "Name2", ...],
+  "diversity_explanation": "Deutsche Erklärung warum diese Auswahl vielfältig ist (2-3 Sätze)",
+  "profiles": {{
+    "Name1": "Kurzes Geschmacksprofil (z.B. 'Rauchig, maritim, torfig')",
+    "Name2": "...",
+    ...
+  }}
+}}
+
+WICHTIG: Verwende die exakten Namen aus der Liste oben!
+Gib nur das JSON-Objekt zurück, keinen anderen Text."""
+            }
+        ],
+        max_tokens=1000
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    # Parse JSON (handle markdown code blocks)
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    result = json.loads(content)
+
+    # Map names back to IDs with validation
+    name_to_id = {w['name']: w['id'] for w in eligible_whiskies}
+    selected_ids = []
+    missing_names = []
+
+    for name in result['selected_whisky_names']:
+        if name in name_to_id:
+            selected_ids.append(name_to_id[name])
+        else:
+            missing_names.append(name)
+
+    # Warn but don't fail if some names don't match (AI might have slight variations)
+    if missing_names and len(selected_ids) < 2:
+        raise ValueError(
+            f"KI hat Whisky-Namen zurückgegeben, die nicht in der Datenbank sind: {missing_names}. "
+            f"Bitte versuche es erneut."
+        )
+
+    # Update the result with validated IDs and names
+    result['selected_whisky_ids'] = selected_ids
+    # Filter names to only those that matched
+    result['selected_whisky_names'] = [
+        name for name in result['selected_whisky_names']
+        if name in name_to_id
+    ]
+    # Also filter profiles to match
+    result['profiles'] = {
+        name: profile for name, profile in result['profiles'].items()
+        if name in name_to_id
+    }
+
+    return result

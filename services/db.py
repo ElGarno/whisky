@@ -362,5 +362,61 @@ def get_rating_exists(tasting_id: int, whisky_id: int, participant_name: str) ->
     return result is not None
 
 
+def get_whiskies_for_random_selection(attendee_count: int) -> list[tuple]:
+    """
+    Get whiskies eligible for random tasting selection.
+
+    Args:
+        attendee_count: Number of tasting attendees
+
+    Returns:
+        List of whisky tuples: (id, name, year, distillery, price,
+                                current_fill_ml, bottle_size_ml, fill_pct)
+
+    Business Logic:
+        - If attendees > 5: exclude whiskies with fill_pct < 25%
+        - Otherwise: include all whiskies
+    """
+    conn = get_connection()
+
+    # Use separate queries to avoid string interpolation (SQL injection prevention)
+    if attendee_count > 5:
+        result = conn.execute("""
+            SELECT
+                w.id,
+                w.name,
+                w.year,
+                d.name as distillery,
+                w.price,
+                w.current_fill_ml,
+                w.bottle_size_ml,
+                ROUND(w.current_fill_ml * 100.0 / NULLIF(w.bottle_size_ml, 0), 1) as fill_pct
+            FROM whiskies w
+            LEFT JOIN distilleries d ON w.distillery_id = d.id
+            WHERE w.bottle_size_ml > 0
+              AND (w.current_fill_ml * 100.0 / NULLIF(w.bottle_size_ml, 0)) >= 25
+            ORDER BY w.created_at DESC
+        """).fetchall()
+    else:
+        result = conn.execute("""
+            SELECT
+                w.id,
+                w.name,
+                w.year,
+                d.name as distillery,
+                w.price,
+                w.current_fill_ml,
+                w.bottle_size_ml,
+                ROUND(w.current_fill_ml * 100.0 / NULLIF(w.bottle_size_ml, 0), 1) as fill_pct
+            FROM whiskies w
+            LEFT JOIN distilleries d ON w.distillery_id = d.id
+            WHERE w.bottle_size_ml > 0
+            ORDER BY w.created_at DESC
+        """).fetchall()
+
+    conn.close()
+    return result
+
+
 # Initialize on import
 init_db()
