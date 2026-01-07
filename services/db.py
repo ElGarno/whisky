@@ -418,5 +418,133 @@ def get_whiskies_for_random_selection(attendee_count: int) -> list[tuple]:
     return result
 
 
+def get_participant_analytics():
+    """
+    Get analytics for all participants across all tastings.
+
+    Returns:
+        List of tuples: (participant_name, total_ratings, avg_score, min_score, max_score, score_stddev)
+    """
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            participant_name,
+            COUNT(*) as total_ratings,
+            ROUND(AVG(score), 2) as avg_score,
+            MIN(score) as min_score,
+            MAX(score) as max_score,
+            ROUND(STDDEV_SAMP(score), 2) as score_stddev
+        FROM ratings
+        GROUP BY participant_name
+        ORDER BY total_ratings DESC
+    """).fetchall()
+    conn.close()
+    return result
+
+
+def get_participant_ratings(participant_name: str):
+    """
+    Get all ratings for a specific participant.
+
+    Returns:
+        List of tuples: (whisky_name, distillery, score, notes, tasting_name, date)
+    """
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            w.name as whisky_name,
+            d.name as distillery,
+            r.score,
+            r.notes,
+            t.name as tasting_name,
+            t.date
+        FROM ratings r
+        JOIN whiskies w ON r.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        JOIN tastings t ON r.tasting_id = t.id
+        WHERE r.participant_name = ?
+        ORDER BY r.score DESC
+    """, [participant_name]).fetchall()
+    conn.close()
+    return result
+
+
+def get_all_participants():
+    """Get list of all unique participant names."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT DISTINCT participant_name
+        FROM ratings
+        ORDER BY participant_name
+    """).fetchall()
+    conn.close()
+    return [r[0] for r in result]
+
+
+def get_whiskies_with_regions():
+    """Get all whiskies with their region information for collection health analysis."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            w.id,
+            w.name,
+            d.name as distillery,
+            d.region,
+            w.year,
+            w.price,
+            ROUND(w.current_fill_ml * 100.0 / NULLIF(w.bottle_size_ml, 0), 1) as fill_pct
+        FROM whiskies w
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        ORDER BY w.created_at DESC
+    """).fetchall()
+    conn.close()
+    return result
+
+
+def add_guest_rating(whisky_id: int, guest_name: str, score: float, notes: str = None):
+    """
+    Add a guest rating (not associated with a tasting).
+    Uses tasting_id = 0 to mark as guest rating.
+    """
+    conn = get_connection()
+
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM ratings").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO ratings (id, tasting_id, whisky_id, participant_name, score, notes)
+        VALUES (?, 0, ?, ?, ?, ?)
+    """, [new_id, whisky_id, guest_name, score, notes])
+
+    conn.close()
+
+
+def get_guest_ratings(whisky_id: int):
+    """Get all guest ratings for a specific whisky."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT participant_name, score, notes, created_at
+        FROM ratings
+        WHERE whisky_id = ? AND tasting_id = 0
+        ORDER BY created_at DESC
+    """, [whisky_id]).fetchall()
+    conn.close()
+    return result
+
+
+def get_whisky_avg_rating(whisky_id: int):
+    """Get average rating for a whisky across all ratings."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            ROUND(AVG(score), 1) as avg_score,
+            COUNT(*) as rating_count
+        FROM ratings
+        WHERE whisky_id = ?
+    """, [whisky_id]).fetchone()
+    conn.close()
+    return result
+
+
 # Initialize on import
 init_db()

@@ -8,8 +8,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
+from services.auth import require_auth, show_logout_button
 
 st.set_page_config(page_title="Whisky Registrieren", page_icon="📸")
+
+if not require_auth():
+    st.stop()
+show_logout_button()
+
 st.title("Whisky Registrieren")
 
 # Session State initialisieren

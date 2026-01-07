@@ -7,8 +7,14 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
+from services.auth import require_auth, show_logout_button
 
 st.set_page_config(page_title="Whisky Info", page_icon="📖", layout="wide")
+
+if not require_auth():
+    st.stop()
+show_logout_button()
+
 st.title("Whisky Informationen")
 
 # Alle Whiskies abrufen

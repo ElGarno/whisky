@@ -1,6 +1,7 @@
 """Whisky Tasting Webapp - Haupteinstiegspunkt."""
 
 import streamlit as st
+from services.auth import require_auth, show_logout_button
 
 st.set_page_config(
     page_title="Whisky Sammlung",
@@ -8,6 +9,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Authentication check
+if not require_auth():
+    st.stop()
+
+show_logout_button()
 
 st.title("Whisky Sammlung")
 
