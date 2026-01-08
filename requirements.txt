@@ -6,3 +6,4 @@ streamlit-folium>=0.15
 plotly>=5.18
 python-dotenv>=1.0
 Pillow>=10.0
+qrcode>=7.4

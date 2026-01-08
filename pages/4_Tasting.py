@@ -3,11 +3,21 @@
 import streamlit as st
 import sys
 from pathlib import Path
+import qrcode
+from io import BytesIO
+import base64
+import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
+from services.auth import require_auth, show_logout_button
 
 st.set_page_config(page_title="Verkostung", page_icon="🍷", layout="wide")
+
+if not require_auth():
+    st.stop()
+show_logout_button()
+
 st.title("Whisky Verkostung")
 
 # Session State initialisieren
@@ -241,6 +251,21 @@ with tab2:
     if not active_tasting:
         st.info("Keine aktive Verkostung. Erstelle eine im Tab 'Neue Verkostung'!")
     else:
+        # Helper function for QR code generation
+        def generate_qr_base64(url: str, size: int = 10) -> str:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=size,
+                border=4,
+            )
+            qr.add_data(url)
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            buffer = BytesIO()
+            qr_img.save(buffer, format="PNG")
+            return base64.b64encode(buffer.getvalue()).decode()
+
         # active_tasting: (id, name, date, whisky_ids, participants, order_explanation, summary_markdown)
         tasting_id = active_tasting[0]
         tasting_name = active_tasting[1]
@@ -255,6 +280,84 @@ with tab2:
         if order_explanation:
             with st.expander("Erklärung zur Reihenfolge"):
                 st.write(order_explanation)
+
+        # Extras: Einladung und Soundscape
+        extra_col1, extra_col2 = st.columns(2)
+
+        with extra_col1:
+            with st.expander("🎫 Einladungskarte generieren"):
+                host_name = st.text_input("Gastgeber-Name (optional)", key="invitation_host")
+                base_url = st.text_input("App-URL", value="http://localhost:8501", key="invitation_url")
+
+                if st.button("Einladung erstellen", key="gen_invitation"):
+                    tasting_whisky_names = [db.get_whisky(wid)[1] for wid in whisky_ids if db.get_whisky(wid)]
+
+                    with st.spinner("Erstelle Einladung..."):
+                        try:
+                            invitation = ai.generate_tasting_invitation(
+                                tasting_name=tasting_name,
+                                date=str(active_tasting[2]),
+                                whiskies=tasting_whisky_names,
+                                host_name=host_name if host_name else None
+                            )
+
+                            # Einladungskarte anzeigen
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                                        padding: 30px; border-radius: 15px; text-align: center;
+                                        border: 2px solid #d4af37; margin: 10px 0;">
+                                <h2 style="color: #d4af37; margin-bottom: 10px;">{invitation['title']}</h2>
+                                <p style="color: #888; font-style: italic;">{invitation['subtitle']}</p>
+                                <hr style="border-color: #d4af37; margin: 20px 0;">
+                                <p style="color: #fff;">{invitation['body_text']}</p>
+                                <p style="color: #d4af37; margin-top: 15px;">🥃 {invitation['whisky_preview']}</p>
+                                <hr style="border-color: #d4af37; margin: 20px 0;">
+                                <p style="color: #d4af37; font-size: 1.2em;">{invitation['footer']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            # QR-Code für die Einladung
+                            qr_data = f"{base_url}/Tasting"
+                            qr_b64 = generate_qr_base64(qr_data, size=6)
+                            st.image(f"data:image/png;base64,{qr_b64}", width=120)
+                            st.caption("QR-Code zur Verkostungsseite")
+
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
+
+        with extra_col2:
+            with st.expander("🎵 Soundscape-Empfehlungen"):
+                if st.button("Atmosphäre vorschlagen", key="gen_soundscape"):
+                    tasting_whisky_info = [
+                        {
+                            "name": db.get_whisky(wid)[1],
+                            "distillery": db.get_whisky(wid)[3],
+                            "region": None  # We'd need to fetch this from distillery
+                        }
+                        for wid in whisky_ids if db.get_whisky(wid)
+                    ]
+
+                    with st.spinner("Analysiere Whiskies für passende Atmosphäre..."):
+                        try:
+                            soundscape = ai.suggest_soundscape(tasting_whisky_info)
+
+                            st.write(f"**Stimmung:** {soundscape['mood']}")
+
+                            st.write("**Ambient Sounds:**")
+                            for sound in soundscape['ambient_sounds']:
+                                st.write(f"- 🔊 {sound}")
+
+                            st.write("**Spotify-Suchen:**")
+                            for search in soundscape['spotify_searches']:
+                                spotify_url = f"https://open.spotify.com/search/{search.replace(' ', '%20')}"
+                                st.markdown(f"- 🎵 [{search}]({spotify_url})")
+
+                            st.info(f"💡 {soundscape['fun_fact']}")
+
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
+
+        st.divider()
 
         # Whiskies in Reihenfolge abrufen
         tasting_whiskies = [db.get_whisky(wid) for wid in whisky_ids]
@@ -378,3 +481,79 @@ with tab3:
                         for r in ratings
                     ])
                     st.dataframe(df, use_container_width=True, hide_index=True)
+
+                    # Flavor Fingerprint für Teilnehmer
+                    st.divider()
+                    st.write("**🧬 Geschmacksprofile der Teilnehmer:**")
+
+                    participants_in_tasting = list(set([r[3] for r in ratings]))
+
+                    for participant in participants_in_tasting:
+                        participant_ratings = [
+                            {
+                                "whisky_name": r[2],
+                                "distillery": None,  # We'd need to fetch this
+                                "score": float(r[4]),
+                                "notes": r[5]
+                            }
+                            for r in ratings if r[3] == participant
+                        ]
+
+                        with st.expander(f"🎯 Profil: {participant}"):
+                            if st.button(f"Geschmacksprofil analysieren", key=f"fp_{tasting[0]}_{participant}"):
+                                with st.spinner(f"Analysiere {participant}'s Geschmack..."):
+                                    try:
+                                        fingerprint = ai.generate_flavor_fingerprint(
+                                            participant_ratings,
+                                            participant
+                                        )
+
+                                        st.write(f"### {fingerprint['profile_name']}")
+                                        st.write(fingerprint['description'])
+
+                                        # Radar Chart für Präferenzen
+                                        prefs = fingerprint['preferences']
+                                        categories = ['Torf', 'Frucht', 'Süße', 'Würze', 'Maritim', 'Sherry']
+                                        values = [
+                                            prefs.get('peat', 0),
+                                            prefs.get('fruit', 0),
+                                            prefs.get('sweet', 0),
+                                            prefs.get('spice', 0),
+                                            prefs.get('maritime', 0),
+                                            prefs.get('sherry', 0)
+                                        ]
+
+                                        fig = go.Figure(data=go.Scatterpolar(
+                                            r=values + [values[0]],  # Close the polygon
+                                            theta=categories + [categories[0]],
+                                            fill='toself',
+                                            fillcolor='rgba(212, 175, 55, 0.3)',
+                                            line=dict(color='#d4af37', width=2)
+                                        ))
+
+                                        fig.update_layout(
+                                            polar=dict(
+                                                radialaxis=dict(
+                                                    visible=True,
+                                                    range=[0, 100]
+                                                )
+                                            ),
+                                            showlegend=False,
+                                            height=300
+                                        )
+
+                                        st.plotly_chart(fig, use_container_width=True)
+
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            st.write("**Bevorzugte Regionen:**")
+                                            for region in fingerprint.get('favorite_regions', []):
+                                                st.write(f"- {region}")
+
+                                        with col2:
+                                            st.write("**Empfehlungen:**")
+                                            for rec in fingerprint.get('recommendations', []):
+                                                st.write(f"- {rec}")
+
+                                    except Exception as e:
+                                        st.error(f"Fehler: {e}")

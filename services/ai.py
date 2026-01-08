@@ -388,3 +388,345 @@ Gib nur das JSON-Objekt zurück, keinen anderen Text."""
     }
 
     return result
+
+
+def generate_flavor_fingerprint(ratings: list[dict], participant_name: str) -> dict:
+    """
+    Analysiere die Geschmackspräferenzen eines Teilnehmers basierend auf seinen Bewertungen.
+
+    Args:
+        ratings: Liste von Dicts mit {whisky_name, distillery, score, notes}
+        participant_name: Name des Teilnehmers
+
+    Returns:
+        {
+            "profile_name": "Der Islay-Liebhaber",
+            "description": "Kurze Beschreibung...",
+            "preferences": {
+                "peat": 0-100,
+                "fruit": 0-100,
+                "sweet": 0-100,
+                "spice": 0-100,
+                "maritime": 0-100,
+                "sherry": 0-100
+            },
+            "favorite_regions": ["Islay", "Highland"],
+            "recommendations": ["Empfohlener Whisky 1", "Empfohlener Whisky 2"]
+        }
+    """
+    ratings_text = "\n".join([
+        f"- {r['whisky_name']} ({r.get('distillery', 'Unbekannt')}): {r['score']}/10" +
+        (f" - Notizen: {r['notes']}" if r.get('notes') else "")
+        for r in ratings
+    ])
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Analysiere die Whisky-Vorlieben von {participant_name} basierend auf diesen Bewertungen:
+
+{ratings_text}
+
+Erstelle ein Geschmacksprofil als JSON-Objekt:
+{{
+  "profile_name": "Ein kreativer, lustiger Titel für den Whisky-Geschmack (auf Deutsch, z.B. 'Der Torfmonster-Flüsterer')",
+  "description": "2-3 Sätze auf Deutsch, die den Geschmack charakterisieren",
+  "preferences": {{
+    "peat": <0-100 Wert basierend auf Vorliebe für torfige Whiskies>,
+    "fruit": <0-100 für fruchtige Whiskies>,
+    "sweet": <0-100 für süße Whiskies>,
+    "spice": <0-100 für würzige Whiskies>,
+    "maritime": <0-100 für maritime/salzige Whiskies>,
+    "sherry": <0-100 für Sherry-Fass-Whiskies>
+  }},
+  "favorite_regions": ["Liste der bevorzugten Regionen basierend auf hohen Bewertungen"],
+  "recommendations": ["3 Whisky-Empfehlungen die zu diesem Profil passen würden"]
+}}
+
+Basiere die Analyse auf bekannten Geschmacksprofilen der bewerteten Whiskies.
+Gib nur das JSON-Objekt zurück, keinen anderen Text."""
+            }
+        ],
+        max_tokens=800
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    return json.loads(content)
+
+
+def suggest_cocktails(whisky_name: str, distillery: str, fill_ml: int) -> dict:
+    """
+    Schlage Cocktails für eine fast leere Flasche vor.
+
+    Args:
+        whisky_name: Name des Whiskys
+        distillery: Brennerei
+        fill_ml: Verbleibende ML
+
+    Returns:
+        {
+            "message": "Einleitender Text",
+            "cocktails": [
+                {
+                    "name": "Cocktail Name",
+                    "description": "Kurze Beschreibung",
+                    "ingredients": ["Zutat 1", "Zutat 2"],
+                    "ml_needed": 50
+                }
+            ],
+            "neat_suggestion": "Warum man ihn doch pur trinken sollte"
+        }
+    """
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Du hast noch {fill_ml}ml von {whisky_name} ({distillery}) übrig.
+
+Schlage 2-3 passende Cocktails vor, die zu diesem Whisky passen würden.
+Berücksichtige den Charakter des Whiskys bei der Auswahl.
+
+Antworte als JSON:
+{{
+  "message": "Einleitender Text auf Deutsch (1-2 Sätze, humorvoll, etwa 'Ja, wir wissen - Whisky mixen ist Ketzerei...')",
+  "cocktails": [
+    {{
+      "name": "Cocktail Name",
+      "description": "Kurze Beschreibung auf Deutsch",
+      "ingredients": ["Zutat 1 mit Menge", "Zutat 2 mit Menge"],
+      "ml_needed": <ML Whisky benötigt>
+    }}
+  ],
+  "neat_suggestion": "Ein humorvoller Grund, warum man ihn doch lieber pur trinken sollte (auf Deutsch)"
+}}
+
+Gib nur das JSON-Objekt zurück."""
+            }
+        ],
+        max_tokens=800
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    return json.loads(content)
+
+
+def analyze_collection_health(whiskies: list[dict], stats: dict) -> dict:
+    """
+    Analysiere die Gesundheit der Whisky-Sammlung und gib Empfehlungen.
+
+    Args:
+        whiskies: Liste von Dicts mit {name, distillery, region, year, price, fill_pct}
+        stats: Dict mit {total_bottles, total_value, avg_price}
+
+    Returns:
+        {
+            "health_score": 0-100,
+            "score_breakdown": {
+                "diversity": 0-100,
+                "value": 0-100,
+                "fill_levels": 0-100,
+                "age_range": 0-100
+            },
+            "strengths": ["Stärke 1", "Stärke 2"],
+            "gaps": ["Lücke 1", "Lücke 2"],
+            "recommendations": [
+                {
+                    "whisky": "Empfohlener Whisky",
+                    "reason": "Warum er die Sammlung ergänzen würde",
+                    "price_range": "€40-60"
+                }
+            ]
+        }
+    """
+    whisky_list = "\n".join([
+        f"- {w['name']} ({w.get('distillery', 'Unbekannt')}, {w.get('region', '?')}, " +
+        f"{w.get('year', 'NAS')}J, €{w.get('price', '?')}, {w.get('fill_pct', 100)}% voll)"
+        for w in whiskies
+    ])
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Analysiere diese Whisky-Sammlung:
+
+{whisky_list}
+
+Statistiken:
+- Gesamtflaschen: {stats.get('total_bottles', 0)}
+- Gesamtwert: €{stats.get('total_value', 0)}
+- Durchschnittspreis: €{stats.get('avg_price', 0)}
+
+Bewerte die Sammlung und gib Empfehlungen als JSON:
+{{
+  "health_score": <0-100 Gesamtbewertung>,
+  "score_breakdown": {{
+    "diversity": <0-100 für Vielfalt der Regionen/Brennereien>,
+    "value": <0-100 für Preis-Leistung und Wertsteigerungspotential>,
+    "fill_levels": <0-100 basierend auf Füllständen>,
+    "age_range": <0-100 für Altersspanne>
+  }},
+  "strengths": ["2-3 Stärken der Sammlung auf Deutsch"],
+  "gaps": ["2-3 Lücken oder fehlende Aspekte auf Deutsch"],
+  "recommendations": [
+    {{
+      "whisky": "Konkreter Whisky-Name",
+      "reason": "Begründung auf Deutsch warum er die Sammlung ergänzt",
+      "price_range": "Ungefähre Preisspanne"
+    }}
+  ]
+}}
+
+Berücksichtige:
+- Fehlen wichtige Regionen? (Islay, Speyside, Highland, Campbeltown, Lowland, Islands)
+- Gibt es eine gute Mischung aus getorft/ungetorft?
+- Sind verschiedene Fasstypen vertreten?
+- Wie ist die Altersspanne?
+
+Gib nur das JSON-Objekt zurück."""
+            }
+        ],
+        max_tokens=1000
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    return json.loads(content)
+
+
+def generate_tasting_invitation(
+    tasting_name: str,
+    date: str,
+    whiskies: list[str],
+    host_name: str = None
+) -> dict:
+    """
+    Generiere eine Einladung für eine Whisky-Verkostung.
+
+    Returns:
+        {
+            "title": "Einladungstitel",
+            "subtitle": "Untertitel",
+            "body_text": "Einladungstext",
+            "whisky_preview": "Vorschau der Whiskies",
+            "footer": "Fußzeile"
+        }
+    """
+    whisky_list = ", ".join(whiskies[:3])
+    if len(whiskies) > 3:
+        whisky_list += f" und {len(whiskies) - 3} weitere"
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Erstelle eine stilvolle Einladung für eine Whisky-Verkostung:
+
+Verkostungsname: {tasting_name}
+Datum: {date}
+Whiskies: {', '.join(whiskies)}
+{f'Gastgeber: {host_name}' if host_name else ''}
+
+Erstelle eine Einladung als JSON:
+{{
+  "title": "Kreativer Titel für die Einladung (kurz, auf Deutsch)",
+  "subtitle": "Eleganter Untertitel",
+  "body_text": "2-3 Sätze einladender Text auf Deutsch, stilvoll aber nicht zu förmlich",
+  "whisky_preview": "Appetitanregende Vorschau der Whiskies (1 Satz)",
+  "footer": "Kurzer Abschluss, z.B. 'Slàinte!'"
+}}
+
+Gib nur das JSON-Objekt zurück."""
+            }
+        ],
+        max_tokens=400
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    return json.loads(content)
+
+
+def suggest_soundscape(whiskies: list[dict]) -> dict:
+    """
+    Schlage passende Ambient-Sounds und Spotify-Playlists für die Verkostung vor.
+
+    Args:
+        whiskies: Liste von Dicts mit {name, distillery, region}
+
+    Returns:
+        {
+            "mood": "Stimmungsbeschreibung",
+            "ambient_sounds": ["Regen an der schottischen Küste", "Knisterndes Kaminfeuer"],
+            "spotify_searches": ["Scottish Folk Ambient", "Fireplace Jazz"],
+            "fun_fact": "Wusstest du..."
+        }
+    """
+    whisky_info = ", ".join([
+        f"{w.get('name', 'Unbekannt')} ({w.get('region', '?')})"
+        for w in whiskies[:5]
+    ])
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""Für eine Whisky-Verkostung mit diesen Whiskies:
+{whisky_info}
+
+Schlage passende Ambient-Sounds und Musik vor als JSON:
+{{
+  "mood": "Kurze Stimmungsbeschreibung auf Deutsch (1 Satz)",
+  "ambient_sounds": ["3-4 passende Ambient-Sounds auf Deutsch, z.B. 'Schottischer Regen', 'Kaminfeuer'"],
+  "spotify_searches": ["3-4 Spotify-Suchbegriffe für passende Playlists"],
+  "fun_fact": "Ein interessanter Fakt über Whisky und Musik/Atmosphäre auf Deutsch"
+}}
+
+Berücksichtige die Regionen der Whiskies (Islay = maritim/wild, Speyside = gemütlich/süß, etc.)
+Gib nur das JSON-Objekt zurück."""
+            }
+        ],
+        max_tokens=400
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    return json.loads(content)
