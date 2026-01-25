@@ -119,6 +119,8 @@ with tab1:
                                     result = ai.select_random_whiskies(eligible_dicts, num_whiskies)
                                     st.session_state.random_selection_result = result
                                     st.session_state.selected_whiskies = result['selected_whisky_ids']
+                                    # Also update multiselect widget state
+                                    st.session_state.manual_selection = result['selected_whisky_ids']
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Fehler: {e}")
@@ -138,6 +140,8 @@ with tab1:
                                     result = ai.select_random_whiskies(eligible_dicts, num_whiskies)
                                     st.session_state.random_selection_result = result
                                     st.session_state.selected_whiskies = result['selected_whisky_ids']
+                                    # Also update multiselect widget state
+                                    st.session_state.manual_selection = result['selected_whisky_ids']
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Fehler: {e}")
