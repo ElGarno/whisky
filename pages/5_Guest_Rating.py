@@ -16,6 +16,15 @@ st.set_page_config(page_title="Gast-Bewertung", page_icon="🎫", layout="center
 # URL-Parameter auslesen
 query_params = st.query_params
 whisky_id = query_params.get("whisky", None)
+tasting_id_param = query_params.get("tasting", None)
+
+# Session state for PIN
+if "validated_pin" not in st.session_state:
+    st.session_state.validated_pin = None
+if "validated_name" not in st.session_state:
+    st.session_state.validated_name = None
+if "validated_tasting" not in st.session_state:
+    st.session_state.validated_tasting = None
 
 if whisky_id:
     # Guest mode - no auth required for rating via QR code
@@ -36,9 +45,61 @@ if whisky_id:
             st.error("Whisky nicht gefunden!")
             st.stop()
 
-        # whisky: (id, name, year, distillery, distillery_id, price, fill_ml, bottle_size, image_path, info_markdown, quantity)
+        # Check if this is a tasting context
+        tasting_id = None
+        tasting_name = None
+        participant_name = None
+
+        if tasting_id_param:
+            try:
+                tasting_id = int(tasting_id_param)
+                tasting = db.get_tasting(tasting_id)
+                if tasting:
+                    tasting_name = tasting[1]
+
+                    # Check if PIN is already validated for this tasting
+                    if (st.session_state.validated_tasting == tasting_id and
+                        st.session_state.validated_name):
+                        participant_name = st.session_state.validated_name
+                    else:
+                        # Show PIN input
+                        st.title(f"🥃 {tasting_name}")
+                        st.caption("Bitte gib deinen PIN ein, um zu bewerten.")
+
+                        pin_input = st.text_input(
+                            "Dein 4-stelliger PIN",
+                            max_chars=4,
+                            type="password",
+                            placeholder="1234"
+                        )
+
+                        if st.button("PIN prüfen", type="primary"):
+                            if pin_input and len(pin_input) == 4:
+                                validated_name = db.validate_participant_pin(tasting_id, pin_input)
+                                if validated_name:
+                                    st.session_state.validated_pin = pin_input
+                                    st.session_state.validated_name = validated_name
+                                    st.session_state.validated_tasting = tasting_id
+                                    st.rerun()
+                                else:
+                                    st.error("Ungültiger PIN!")
+                            else:
+                                st.error("Bitte gib einen 4-stelligen PIN ein.")
+
+                        st.stop()
+                else:
+                    # Tasting not found, fall back to guest mode
+                    tasting_id = None
+            except ValueError:
+                tasting_id = None
+
+        # Display whisky info
         st.title(f"🥃 {whisky[1]}")
         st.caption(f"{whisky[3] or 'Unbekannte Brennerei'}" + (f" • {whisky[2]} Jahre" if whisky[2] else ""))
+
+        # Show tasting context if applicable
+        if tasting_name and participant_name:
+            st.info(f"Verkostung: **{tasting_name}** | Teilnehmer: **{participant_name}**")
 
         # Bild anzeigen wenn vorhanden
         if whisky[8]:
@@ -50,6 +111,22 @@ if whisky_id:
 
         st.divider()
 
+        # Check if already rated (for tasting mode)
+        if tasting_id and participant_name:
+            if db.get_rating_exists(tasting_id, whisky_id, participant_name):
+                st.success("Du hast diesen Whisky bereits bewertet!")
+
+                # Show existing rating
+                ratings = db.get_tasting_ratings(tasting_id)
+                for r in ratings:
+                    if r[1] == whisky_id and r[3] == participant_name:
+                        st.write(f"**Deine Bewertung:** {r[4]}/10")
+                        if r[5]:
+                            st.caption(f"Notizen: {r[5]}")
+                        break
+
+                st.stop()
+
         # Durchschnittsbewertung anzeigen
         avg_rating = db.get_whisky_avg_rating(whisky_id)
         if avg_rating and avg_rating[1] > 0:
@@ -58,11 +135,20 @@ if whisky_id:
         st.subheader("Deine Bewertung")
 
         with st.form("guest_rating_form"):
-            guest_name = st.text_input(
-                "Dein Name",
-                placeholder="Max",
-                help="Damit wir wissen, wer bewertet hat"
-            )
+            # In tasting mode, name is pre-filled and read-only
+            if participant_name:
+                guest_name = participant_name
+                st.text_input(
+                    "Dein Name",
+                    value=participant_name,
+                    disabled=True
+                )
+            else:
+                guest_name = st.text_input(
+                    "Dein Name",
+                    placeholder="Max",
+                    help="Damit wir wissen, wer bewertet hat"
+                )
 
             score = st.slider(
                 "Bewertung",
@@ -82,33 +168,46 @@ if whisky_id:
             submitted = st.form_submit_button("Bewertung abgeben", type="primary", use_container_width=True)
 
             if submitted:
-                if not guest_name.strip():
+                if not guest_name or not guest_name.strip():
                     st.error("Bitte gib deinen Namen ein!")
                 else:
-                    db.add_guest_rating(
-                        whisky_id=whisky_id,
-                        guest_name=guest_name.strip(),
-                        score=score,
-                        notes=notes.strip() if notes else None
-                    )
-                    st.success("🎉 Danke für deine Bewertung!")
+                    if tasting_id and participant_name:
+                        # Tasting mode - save with tasting_id
+                        db.add_rating(
+                            tasting_id=tasting_id,
+                            whisky_id=whisky_id,
+                            participant_name=guest_name.strip(),
+                            score=score,
+                            notes=notes.strip() if notes else None
+                        )
+                        st.success("🎉 Bewertung gespeichert!")
+                    else:
+                        # Guest mode - save as guest rating
+                        db.add_guest_rating(
+                            whisky_id=whisky_id,
+                            guest_name=guest_name.strip(),
+                            score=score,
+                            notes=notes.strip() if notes else None
+                        )
+                        st.success("🎉 Danke für deine Bewertung!")
                     st.balloons()
 
-        # Bisherige Gast-Bewertungen
-        guest_ratings = db.get_guest_ratings(whisky_id)
-        if guest_ratings:
-            st.divider()
-            st.subheader("Andere Bewertungen")
-            for rating in guest_ratings[:5]:  # Letzte 5 anzeigen
-                name, score, notes, created = rating
-                with st.container():
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.write(f"**{name}**")
-                        if notes:
-                            st.caption(notes)
-                    with col2:
-                        st.write(f"**{score}/10**")
+        # Bisherige Gast-Bewertungen (only in guest mode)
+        if not tasting_id:
+            guest_ratings = db.get_guest_ratings(whisky_id)
+            if guest_ratings:
+                st.divider()
+                st.subheader("Andere Bewertungen")
+                for rating in guest_ratings[:5]:  # Letzte 5 anzeigen
+                    name, score, notes, created = rating
+                    with st.container():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.write(f"**{name}**")
+                            if notes:
+                                st.caption(notes)
+                        with col2:
+                            st.write(f"**{score}/10**")
 
     except ValueError:
         st.error("Ungültige Whisky-ID!")
@@ -129,7 +228,7 @@ else:
 
     # Base URL für QR-Codes (kann angepasst werden)
     st.subheader("Einstellungen")
-    default_url = "http://localhost:8501"
+    default_url = "https://whisky.faffi.synology.me"
     base_url = st.text_input(
         "Basis-URL deiner App",
         value=default_url,

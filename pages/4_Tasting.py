@@ -232,6 +232,9 @@ with tab1:
                         order_explanation=st.session_state.chosen_order['explanation']
                     )
 
+                    # Generate PINs for participants
+                    db.create_participant_pins(tasting_id, st.session_state.participants)
+
                     # Session State zurücksetzen
                     st.session_state.selected_whiskies = []
                     st.session_state.participants = []
@@ -284,10 +287,16 @@ with tab2:
         # Extras: Einladung und Soundscape
         extra_col1, extra_col2 = st.columns(2)
 
+        # Default URL for QR codes
+        default_app_url = "https://whisky.faffi.synology.me"
+
         with extra_col1:
             with st.expander("🎫 Einladungskarte generieren"):
                 host_name = st.text_input("Gastgeber-Name (optional)", key="invitation_host")
-                base_url = st.text_input("App-URL", value="http://localhost:8501", key="invitation_url")
+                base_url = st.text_input("App-URL", value=default_app_url, key="invitation_url")
+
+                # Get participant PINs
+                participant_pins = db.get_participant_pins(tasting_id)
 
                 if st.button("Einladung erstellen", key="gen_invitation"):
                     tasting_whisky_names = [db.get_whisky(wid)[1] for wid in whisky_ids if db.get_whisky(wid)]
@@ -325,6 +334,14 @@ with tab2:
                         except Exception as e:
                             st.error(f"Fehler: {e}")
 
+                # Show participant PINs
+                if participant_pins:
+                    st.divider()
+                    st.write("**Teilnehmer-PINs:**")
+                    st.caption("Jeder Teilnehmer benötigt seinen PIN zum Bewerten.")
+                    for name, pin in participant_pins:
+                        st.code(f"{name}: {pin}", language=None)
+
         with extra_col2:
             with st.expander("🎵 Soundscape-Empfehlungen"):
                 if st.button("Atmosphäre vorschlagen", key="gen_soundscape"):
@@ -356,6 +373,58 @@ with tab2:
 
                         except Exception as e:
                             st.error(f"Fehler: {e}")
+
+        st.divider()
+
+        # QR-Codes for bottles
+        with st.expander("📱 QR-Codes für Flaschen"):
+            st.write("Generiere QR-Codes für jede Flasche. Teilnehmer können scannen und mit ihrem PIN bewerten.")
+
+            qr_base_url = st.text_input(
+                "App-URL für QR-Codes",
+                value=default_app_url,
+                key="qr_base_url"
+            )
+
+            if st.button("QR-Codes generieren", key="gen_bottle_qr"):
+                cols = st.columns(min(3, len(whisky_ids)))
+
+                for idx, wid in enumerate(whisky_ids):
+                    whisky_data = db.get_whisky(wid)
+                    if not whisky_data:
+                        continue
+
+                    # URL with tasting and whisky parameters
+                    qr_url = f"{qr_base_url}/Guest_Rating?tasting={tasting_id}&whisky={wid}"
+
+                    qr_b64 = generate_qr_base64(qr_url, size=8)
+
+                    with cols[idx % len(cols)]:
+                        st.image(f"data:image/png;base64,{qr_b64}", width=150)
+                        whisky_name = whisky_data[1]
+                        display_name = whisky_name[:25] + "..." if len(whisky_name) > 25 else whisky_name
+                        st.caption(display_name)
+
+                        # Download button
+                        qr = qrcode.QRCode(
+                            version=1,
+                            error_correction=qrcode.constants.ERROR_CORRECT_L,
+                            box_size=10,
+                            border=4,
+                        )
+                        qr.add_data(qr_url)
+                        qr.make(fit=True)
+                        qr_img = qr.make_image(fill_color="black", back_color="white")
+                        buffer = BytesIO()
+                        qr_img.save(buffer, format="PNG")
+
+                        st.download_button(
+                            label="Download",
+                            data=buffer.getvalue(),
+                            file_name=f"qr_{whisky_name.replace(' ', '_')}.png",
+                            mime="image/png",
+                            key=f"dl_qr_{wid}"
+                        )
 
         st.divider()
 
@@ -453,6 +522,10 @@ with tab2:
 with tab3:
     st.subheader("Vergangene Verkostungen")
 
+    # Session state for delete confirmation
+    if "delete_confirm_tasting" not in st.session_state:
+        st.session_state.delete_confirm_tasting = None
+
     all_tastings = db.get_all_tastings()
     completed_tastings = [t for t in all_tastings if t[5] == 'completed']
 
@@ -465,8 +538,49 @@ with tab3:
                 st.write(f"**Teilnehmer:** {', '.join(tasting[4])}")
                 st.write(f"**Whiskies:** {len(tasting[3])}")
 
+                # Delete options
+                st.divider()
+                delete_col1, delete_col2 = st.columns(2)
+
+                with delete_col1:
+                    if st.session_state.delete_confirm_tasting == f"ratings_{tasting[0]}":
+                        st.warning("Sicher? Alle Bewertungen werden gelöscht.")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("Ja, löschen", key=f"confirm_del_ratings_{tasting[0]}", type="primary"):
+                                count = db.delete_tasting_ratings(tasting[0])
+                                st.session_state.delete_confirm_tasting = None
+                                st.success(f"{count} Bewertungen gelöscht!")
+                                st.rerun()
+                        with col_no:
+                            if st.button("Abbrechen", key=f"cancel_del_ratings_{tasting[0]}"):
+                                st.session_state.delete_confirm_tasting = None
+                                st.rerun()
+                    else:
+                        if st.button("Bewertungen löschen", key=f"del_ratings_{tasting[0]}"):
+                            st.session_state.delete_confirm_tasting = f"ratings_{tasting[0]}"
+                            st.rerun()
+
+                with delete_col2:
+                    if st.session_state.delete_confirm_tasting == f"tasting_{tasting[0]}":
+                        st.warning("Sicher? Verkostung und alle Daten werden gelöscht.")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("Ja, löschen", key=f"confirm_del_tasting_{tasting[0]}", type="primary"):
+                                db.delete_tasting(tasting[0])
+                                st.session_state.delete_confirm_tasting = None
+                                st.success("Verkostung gelöscht!")
+                                st.rerun()
+                        with col_no:
+                            if st.button("Abbrechen", key=f"cancel_del_tasting_{tasting[0]}"):
+                                st.session_state.delete_confirm_tasting = None
+                                st.rerun()
+                    else:
+                        if st.button("Verkostung löschen", key=f"del_tasting_{tasting[0]}"):
+                            st.session_state.delete_confirm_tasting = f"tasting_{tasting[0]}"
+                            st.rerun()
+
                 if tasting[6]:  # summary_markdown
-                    st.divider()
                     st.markdown(tasting[6])
 
                 # Bewertungen anzeigen

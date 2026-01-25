@@ -1,0 +1,6 @@
+[project]
+name = "whisky"
+version = "0.1.0"
+description = "A mobile-friendly Streamlit webapp for managing a personal whisky collection and conducting tastings with AI-powered features"
+requires-python = ">=3.9"
+dependencies = []

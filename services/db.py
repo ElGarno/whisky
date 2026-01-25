@@ -1,6 +1,8 @@
 """DuckDB database operations for the Whisky app."""
 
 import duckdb
+import random
+import string
 from pathlib import Path
 from datetime import date
 
@@ -73,6 +75,17 @@ def init_db():
             score DECIMAL(3,1),
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tasting_participants (
+            id INTEGER PRIMARY KEY,
+            tasting_id INTEGER,
+            participant_name VARCHAR,
+            pin_code VARCHAR(4),
+            UNIQUE(tasting_id, participant_name),
+            UNIQUE(tasting_id, pin_code)
         )
     """)
 
@@ -542,6 +555,136 @@ def get_whisky_avg_rating(whisky_id: int):
         FROM ratings
         WHERE whisky_id = ?
     """, [whisky_id]).fetchone()
+    conn.close()
+    return result
+
+
+# Tasting participant PIN operations
+def create_participant_pins(tasting_id: int, participants: list) -> dict:
+    """
+    Create unique 4-digit PINs for tasting participants.
+
+    Args:
+        tasting_id: The tasting ID
+        participants: List of participant names
+
+    Returns:
+        Dict mapping participant names to their PINs
+    """
+    conn = get_connection()
+    pins = {}
+    used_pins = set()
+
+    for participant in participants:
+        # Generate unique 4-digit PIN
+        while True:
+            pin = ''.join(random.choices(string.digits, k=4))
+            if pin not in used_pins:
+                used_pins.add(pin)
+                break
+
+        max_id = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM tasting_participants"
+        ).fetchone()[0]
+        new_id = max_id + 1
+
+        conn.execute("""
+            INSERT INTO tasting_participants (id, tasting_id, participant_name, pin_code)
+            VALUES (?, ?, ?, ?)
+        """, [new_id, tasting_id, participant, pin])
+
+        pins[participant] = pin
+
+    conn.close()
+    return pins
+
+
+def validate_participant_pin(tasting_id: int, pin_code: str) -> str | None:
+    """
+    Validate a PIN for a tasting and return the participant name.
+
+    Args:
+        tasting_id: The tasting ID
+        pin_code: The 4-digit PIN
+
+    Returns:
+        Participant name if valid, None otherwise
+    """
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT participant_name
+        FROM tasting_participants
+        WHERE tasting_id = ? AND pin_code = ?
+    """, [tasting_id, pin_code]).fetchone()
+    conn.close()
+
+    return result[0] if result else None
+
+
+def get_participant_pins(tasting_id: int) -> list[tuple]:
+    """
+    Get all participant PINs for a tasting.
+
+    Args:
+        tasting_id: The tasting ID
+
+    Returns:
+        List of tuples: (participant_name, pin_code)
+    """
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT participant_name, pin_code
+        FROM tasting_participants
+        WHERE tasting_id = ?
+        ORDER BY participant_name
+    """, [tasting_id]).fetchall()
+    conn.close()
+    return result
+
+
+def delete_tasting_ratings(tasting_id: int) -> int:
+    """
+    Delete all ratings for a specific tasting.
+
+    Args:
+        tasting_id: The tasting ID
+
+    Returns:
+        Number of deleted ratings
+    """
+    conn = get_connection()
+    # Count ratings before deletion
+    count = conn.execute(
+        "SELECT COUNT(*) FROM ratings WHERE tasting_id = ?", [tasting_id]
+    ).fetchone()[0]
+
+    conn.execute("DELETE FROM ratings WHERE tasting_id = ?", [tasting_id])
+    conn.close()
+    return count
+
+
+def delete_tasting(tasting_id: int):
+    """
+    Delete a tasting and all associated data (ratings, participants).
+
+    Args:
+        tasting_id: The tasting ID
+    """
+    conn = get_connection()
+    conn.execute("DELETE FROM ratings WHERE tasting_id = ?", [tasting_id])
+    conn.execute("DELETE FROM tasting_participants WHERE tasting_id = ?", [tasting_id])
+    conn.execute("DELETE FROM tastings WHERE id = ?", [tasting_id])
+    conn.close()
+
+
+def get_tasting(tasting_id: int):
+    """Get a single tasting by ID."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT id, name, date, whisky_ids, participants, order_explanation, summary_markdown, status
+        FROM tastings
+        WHERE id = ?
+    """, [tasting_id]).fetchone()
     conn.close()
     return result
 
