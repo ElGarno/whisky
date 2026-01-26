@@ -436,11 +436,15 @@ else:
                     for r in participant_ratings
                 ]
 
+                # Hole alle Whiskies für Empfehlungen aus der Sammlung
+                all_whisky_names = db.get_all_whisky_names()
+
                 with st.spinner("Analysiere Geschmacksprofil..."):
                     try:
                         fingerprint = ai.generate_flavor_fingerprint(
                             ratings_for_ai,
-                            selected_participant
+                            selected_participant,
+                            available_whiskies=all_whisky_names
                         )
 
                         st.write(f"## {fingerprint['profile_name']}")
@@ -476,15 +480,26 @@ else:
 
                         st.plotly_chart(fig, use_container_width=True)
 
-                        col1, col2 = st.columns(2)
+                        col1, col2, col3 = st.columns(3)
+
                         with col1:
                             st.write("**Bevorzugte Regionen:**")
                             for region in fingerprint.get('favorite_regions', []):
                                 st.write(f"- {region}")
 
                         with col2:
-                            st.write("**Empfehlungen:**")
-                            for rec in fingerprint.get('recommendations', []):
+                            st.write("**🏠 Aus deiner Sammlung:**")
+                            recs_collection = fingerprint.get('recommendations_from_collection', [])
+                            if recs_collection:
+                                for rec in recs_collection:
+                                    st.write(f"- ✅ {rec}")
+                            else:
+                                st.caption("Keine passenden gefunden")
+
+                        with col3:
+                            st.write("**🛒 Kaufempfehlungen:**")
+                            recs_external = fingerprint.get('recommendations_external', fingerprint.get('recommendations', []))
+                            for rec in recs_external:
                                 st.write(f"- {rec}")
 
                     except Exception as e:

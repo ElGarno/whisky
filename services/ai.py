@@ -390,13 +390,18 @@ Gib nur das JSON-Objekt zurück, keinen anderen Text."""
     return result
 
 
-def generate_flavor_fingerprint(ratings: list[dict], participant_name: str) -> dict:
+def generate_flavor_fingerprint(
+    ratings: list[dict],
+    participant_name: str,
+    available_whiskies: list[str] = None
+) -> dict:
     """
     Analysiere die Geschmackspräferenzen eines Teilnehmers basierend auf seinen Bewertungen.
 
     Args:
         ratings: Liste von Dicts mit {whisky_name, distillery, score, notes}
         participant_name: Name des Teilnehmers
+        available_whiskies: Optionale Liste von Whiskies in der Sammlung für Empfehlungen
 
     Returns:
         {
@@ -411,7 +416,8 @@ def generate_flavor_fingerprint(ratings: list[dict], participant_name: str) -> d
                 "sherry": 0-100
             },
             "favorite_regions": ["Islay", "Highland"],
-            "recommendations": ["Empfohlener Whisky 1", "Empfohlener Whisky 2"]
+            "recommendations_from_collection": ["Whisky aus Sammlung"],
+            "recommendations_external": ["Externer Whisky 1", "Externer Whisky 2"]
         }
     """
     ratings_text = "\n".join([
@@ -419,6 +425,14 @@ def generate_flavor_fingerprint(ratings: list[dict], participant_name: str) -> d
         (f" - Notizen: {r['notes']}" if r.get('notes') else "")
         for r in ratings
     ])
+
+    collection_info = ""
+    if available_whiskies:
+        collection_info = f"""
+
+Die folgenden Whiskies sind in der Sammlung verfügbar (für Empfehlungen aus der Sammlung):
+{chr(10).join(['- ' + w for w in available_whiskies])}
+"""
 
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -428,7 +442,7 @@ def generate_flavor_fingerprint(ratings: list[dict], participant_name: str) -> d
                 "content": f"""Analysiere die Whisky-Vorlieben von {participant_name} basierend auf diesen Bewertungen:
 
 {ratings_text}
-
+{collection_info}
 Erstelle ein Geschmacksprofil als JSON-Objekt:
 {{
   "profile_name": "Ein kreativer, lustiger Titel für den Whisky-Geschmack (auf Deutsch, z.B. 'Der Torfmonster-Flüsterer')",
@@ -442,14 +456,19 @@ Erstelle ein Geschmacksprofil als JSON-Objekt:
     "sherry": <0-100 für Sherry-Fass-Whiskies>
   }},
   "favorite_regions": ["Liste der bevorzugten Regionen basierend auf hohen Bewertungen"],
-  "recommendations": ["3 Whisky-Empfehlungen die zu diesem Profil passen würden"]
+  "recommendations_from_collection": ["1-2 Whiskies AUS DER SAMMLUNG OBEN die zu diesem Profil passen - NUR wenn Sammlung angegeben wurde, sonst leere Liste"],
+  "recommendations_external": ["2-3 Whisky-Empfehlungen die NICHT in der Sammlung sind und gut zum Profil passen würden"]
 }}
+
+WICHTIG:
+- recommendations_from_collection: NUR Whiskies aus der angegebenen Sammlung verwenden! Wenn keine Sammlung angegeben, leere Liste.
+- recommendations_external: Whiskies die der Person gefallen könnten und zum Kauf empfohlen werden.
 
 Basiere die Analyse auf bekannten Geschmacksprofilen der bewerteten Whiskies.
 Gib nur das JSON-Objekt zurück, keinen anderen Text."""
             }
         ],
-        max_tokens=800
+        max_tokens=900
     )
 
     content = response.choices[0].message.content.strip()
@@ -460,7 +479,14 @@ Gib nur das JSON-Objekt zurück, keinen anderen Text."""
             content = content[4:]
         content = content.strip()
 
-    return json.loads(content)
+    result = json.loads(content)
+
+    # Backwards compatibility: merge old format if needed
+    if 'recommendations' in result and 'recommendations_external' not in result:
+        result['recommendations_external'] = result.pop('recommendations', [])
+        result['recommendations_from_collection'] = []
+
+    return result
 
 
 def suggest_cocktails(whisky_name: str, distillery: str, fill_ml: int) -> dict:

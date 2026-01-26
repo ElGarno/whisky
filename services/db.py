@@ -76,6 +76,16 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS participant_fingerprints (
+            id INTEGER PRIMARY KEY,
+            tasting_id INTEGER,
+            participant_name VARCHAR,
+            fingerprint_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.close()
 
 
@@ -544,6 +554,49 @@ def get_whisky_avg_rating(whisky_id: int):
     """, [whisky_id]).fetchone()
     conn.close()
     return result
+
+
+def save_participant_fingerprint(tasting_id: int, participant_name: str, fingerprint: dict):
+    """Save a participant's flavor fingerprint for a tasting."""
+    import json
+    conn = get_connection()
+
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM participant_fingerprints").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO participant_fingerprints (id, tasting_id, participant_name, fingerprint_json)
+        VALUES (?, ?, ?, ?)
+    """, [new_id, tasting_id, participant_name, json.dumps(fingerprint, ensure_ascii=False)])
+
+    conn.close()
+
+
+def get_tasting_fingerprints(tasting_id: int) -> dict:
+    """
+    Get all participant fingerprints for a tasting.
+    Returns: {participant_name: fingerprint_dict, ...}
+    """
+    import json
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT participant_name, fingerprint_json
+        FROM participant_fingerprints
+        WHERE tasting_id = ?
+    """, [tasting_id]).fetchall()
+    conn.close()
+
+    return {row[0]: json.loads(row[1]) for row in result}
+
+
+def get_all_whisky_names() -> list[str]:
+    """Get all whisky names in the collection."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT name FROM whiskies ORDER BY name
+    """).fetchall()
+    conn.close()
+    return [r[0] for r in result]
 
 
 # Initialize on import

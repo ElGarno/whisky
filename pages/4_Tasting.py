@@ -422,33 +422,68 @@ with tab2:
             st.success("Alle Bewertungen abgeschlossen!")
 
             if st.button("Zusammenfassung generieren & Verkostung abschließen", type="primary"):
-                with st.spinner("Generiere KI-Zusammenfassung..."):
-                    try:
-                        # Bewertungsdaten vorbereiten
-                        ratings_data = [
+                progress_bar = st.progress(0, text="Generiere Zusammenfassung...")
+
+                try:
+                    # Bewertungsdaten vorbereiten
+                    ratings_data = [
+                        {
+                            "participant": r[3],  # participant_name
+                            "whisky": r[2],       # whisky_name
+                            "score": float(r[4]), # score
+                            "notes": r[5]         # notes
+                        }
+                        for r in existing_ratings
+                    ]
+
+                    whisky_names = [w[1] for w in tasting_whiskies if w]
+
+                    # 1. Generate summary
+                    summary = ai.generate_tasting_summary(
+                        ratings_data,
+                        whisky_names,
+                        list(participants)
+                    )
+                    progress_bar.progress(30, text="Zusammenfassung erstellt...")
+
+                    # 2. Generate flavor fingerprints for each participant
+                    all_whisky_names = db.get_all_whisky_names()
+                    total_participants = len(participants)
+
+                    for idx, participant in enumerate(participants):
+                        progress_pct = 30 + int((idx + 1) / total_participants * 60)
+                        progress_bar.progress(progress_pct, text=f"Erstelle Geschmacksprofil für {participant}...")
+
+                        # Get this participant's ratings
+                        participant_ratings = [
                             {
-                                "participant": r[3],  # participant_name
-                                "whisky": r[2],       # whisky_name
-                                "score": float(r[4]), # score
-                                "notes": r[5]         # notes
+                                "whisky_name": r['whisky'],
+                                "distillery": None,
+                                "score": r['score'],
+                                "notes": r.get('notes')
                             }
-                            for r in existing_ratings
+                            for r in ratings_data if r['participant'] == participant
                         ]
 
-                        whisky_names = [w[1] for w in tasting_whiskies if w]
-
-                        summary = ai.generate_tasting_summary(
-                            ratings_data,
-                            whisky_names,
-                            list(participants)
+                        # Generate fingerprint with collection info
+                        fingerprint = ai.generate_flavor_fingerprint(
+                            participant_ratings,
+                            participant,
+                            available_whiskies=all_whisky_names
                         )
 
-                        db.complete_tasting(tasting_id, summary)
-                        st.success("Verkostung abgeschlossen!")
-                        st.rerun()
+                        # Save to database
+                        db.save_participant_fingerprint(tasting_id, participant, fingerprint)
 
-                    except Exception as e:
-                        st.error(f"Fehler beim Generieren der Zusammenfassung: {e}")
+                    progress_bar.progress(95, text="Speichere Ergebnisse...")
+
+                    db.complete_tasting(tasting_id, summary)
+                    progress_bar.progress(100, text="Fertig!")
+                    st.success("Verkostung abgeschlossen! Geschmacksprofile wurden für alle Teilnehmer erstellt.")
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Fehler beim Generieren: {e}")
 
 with tab3:
     st.subheader("Vergangene Verkostungen")
@@ -482,78 +517,100 @@ with tab3:
                     ])
                     st.dataframe(df, use_container_width=True, hide_index=True)
 
-                    # Flavor Fingerprint für Teilnehmer
+                    # Flavor Fingerprints automatisch anzeigen
                     st.divider()
                     st.write("**🧬 Geschmacksprofile der Teilnehmer:**")
 
-                    participants_in_tasting = list(set([r[3] for r in ratings]))
+                    # Lade gespeicherte Fingerprints
+                    saved_fingerprints = db.get_tasting_fingerprints(tasting[0])
 
-                    for participant in participants_in_tasting:
-                        participant_ratings = [
-                            {
-                                "whisky_name": r[2],
-                                "distillery": None,  # We'd need to fetch this
-                                "score": float(r[4]),
-                                "notes": r[5]
-                            }
-                            for r in ratings if r[3] == participant
-                        ]
+                    if saved_fingerprints:
+                        # Zeige gespeicherte Fingerprints
+                        for participant, fingerprint in saved_fingerprints.items():
+                            with st.expander(f"🎯 {participant}: {fingerprint.get('profile_name', 'Profil')}"):
+                                st.write(fingerprint.get('description', ''))
 
-                        with st.expander(f"🎯 Profil: {participant}"):
-                            if st.button(f"Geschmacksprofil analysieren", key=f"fp_{tasting[0]}_{participant}"):
-                                with st.spinner(f"Analysiere {participant}'s Geschmack..."):
+                                # Radar Chart für Präferenzen
+                                prefs = fingerprint.get('preferences', {})
+                                categories = ['Torf', 'Frucht', 'Süße', 'Würze', 'Maritim', 'Sherry']
+                                values = [
+                                    prefs.get('peat', 0),
+                                    prefs.get('fruit', 0),
+                                    prefs.get('sweet', 0),
+                                    prefs.get('spice', 0),
+                                    prefs.get('maritime', 0),
+                                    prefs.get('sherry', 0)
+                                ]
+
+                                fig = go.Figure(data=go.Scatterpolar(
+                                    r=values + [values[0]],
+                                    theta=categories + [categories[0]],
+                                    fill='toself',
+                                    fillcolor='rgba(212, 175, 55, 0.3)',
+                                    line=dict(color='#d4af37', width=2)
+                                ))
+
+                                fig.update_layout(
+                                    polar=dict(
+                                        radialaxis=dict(visible=True, range=[0, 100])
+                                    ),
+                                    showlegend=False,
+                                    height=300
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                col1, col2, col3 = st.columns(3)
+
+                                with col1:
+                                    st.write("**Bevorzugte Regionen:**")
+                                    for region in fingerprint.get('favorite_regions', []):
+                                        st.write(f"- {region}")
+
+                                with col2:
+                                    st.write("**🏠 Aus deiner Sammlung:**")
+                                    recs_collection = fingerprint.get('recommendations_from_collection', [])
+                                    if recs_collection:
+                                        for rec in recs_collection:
+                                            st.write(f"- ✅ {rec}")
+                                    else:
+                                        st.caption("Keine passenden in Sammlung")
+
+                                with col3:
+                                    st.write("**🛒 Kaufempfehlungen:**")
+                                    recs_external = fingerprint.get('recommendations_external', fingerprint.get('recommendations', []))
+                                    for rec in recs_external:
+                                        st.write(f"- {rec}")
+                    else:
+                        # Fallback: Manuell generieren für ältere Tastings
+                        st.info("Für diese Verkostung wurden noch keine Geschmacksprofile gespeichert.")
+
+                        participants_in_tasting = list(set([r[3] for r in ratings]))
+
+                        if st.button("Profile jetzt generieren", key=f"gen_profiles_{tasting[0]}"):
+                            all_whisky_names = db.get_all_whisky_names()
+
+                            for participant in participants_in_tasting:
+                                with st.spinner(f"Erstelle Profil für {participant}..."):
+                                    participant_ratings = [
+                                        {
+                                            "whisky_name": r[2],
+                                            "distillery": None,
+                                            "score": float(r[4]),
+                                            "notes": r[5]
+                                        }
+                                        for r in ratings if r[3] == participant
+                                    ]
+
                                     try:
                                         fingerprint = ai.generate_flavor_fingerprint(
                                             participant_ratings,
-                                            participant
+                                            participant,
+                                            available_whiskies=all_whisky_names
                                         )
-
-                                        st.write(f"### {fingerprint['profile_name']}")
-                                        st.write(fingerprint['description'])
-
-                                        # Radar Chart für Präferenzen
-                                        prefs = fingerprint['preferences']
-                                        categories = ['Torf', 'Frucht', 'Süße', 'Würze', 'Maritim', 'Sherry']
-                                        values = [
-                                            prefs.get('peat', 0),
-                                            prefs.get('fruit', 0),
-                                            prefs.get('sweet', 0),
-                                            prefs.get('spice', 0),
-                                            prefs.get('maritime', 0),
-                                            prefs.get('sherry', 0)
-                                        ]
-
-                                        fig = go.Figure(data=go.Scatterpolar(
-                                            r=values + [values[0]],  # Close the polygon
-                                            theta=categories + [categories[0]],
-                                            fill='toself',
-                                            fillcolor='rgba(212, 175, 55, 0.3)',
-                                            line=dict(color='#d4af37', width=2)
-                                        ))
-
-                                        fig.update_layout(
-                                            polar=dict(
-                                                radialaxis=dict(
-                                                    visible=True,
-                                                    range=[0, 100]
-                                                )
-                                            ),
-                                            showlegend=False,
-                                            height=300
-                                        )
-
-                                        st.plotly_chart(fig, use_container_width=True)
-
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            st.write("**Bevorzugte Regionen:**")
-                                            for region in fingerprint.get('favorite_regions', []):
-                                                st.write(f"- {region}")
-
-                                        with col2:
-                                            st.write("**Empfehlungen:**")
-                                            for rec in fingerprint.get('recommendations', []):
-                                                st.write(f"- {rec}")
-
+                                        db.save_participant_fingerprint(tasting[0], participant, fingerprint)
                                     except Exception as e:
-                                        st.error(f"Fehler: {e}")
+                                        st.error(f"Fehler bei {participant}: {e}")
+
+                            st.success("Profile erstellt!")
+                            st.rerun()
