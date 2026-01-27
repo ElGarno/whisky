@@ -89,7 +89,120 @@ def init_db():
         )
     """)
 
+    # Whisky cards - consistent card definitions for all users
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS whisky_cards (
+            id INTEGER PRIMARY KEY,
+            whisky_id INTEGER UNIQUE,
+            card_rarity VARCHAR DEFAULT 'common',
+            card_design JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # User unlocked cards - tracks which cards each user has unlocked
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_cards (
+            id INTEGER PRIMARY KEY,
+            user_name VARCHAR,
+            card_id INTEGER,
+            whisky_id INTEGER,
+            unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            rating_id INTEGER,
+            UNIQUE(user_name, whisky_id)
+        )
+    """)
+
+    # Achievement definitions
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS achievements (
+            id INTEGER PRIMARY KEY,
+            code VARCHAR UNIQUE,
+            name VARCHAR,
+            description TEXT,
+            icon VARCHAR,
+            category VARCHAR,
+            requirement_type VARCHAR,
+            requirement_value INTEGER,
+            requirement_extra JSON,
+            points INTEGER DEFAULT 10
+        )
+    """)
+
+    # User unlocked achievements
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_achievements (
+            id INTEGER PRIMARY KEY,
+            user_name VARCHAR,
+            achievement_id INTEGER,
+            unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            progress INTEGER DEFAULT 0,
+            UNIQUE(user_name, achievement_id)
+        )
+    """)
+
+    # Barcode mapping - maps EAN barcodes to whiskies
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS whisky_barcodes (
+            id INTEGER PRIMARY KEY,
+            barcode VARCHAR UNIQUE,
+            whisky_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Initialize default achievements if empty
+    _init_default_achievements(conn)
+
     conn.close()
+
+
+def _init_default_achievements(conn):
+    """Initialize default achievement definitions."""
+    existing = conn.execute("SELECT COUNT(*) FROM achievements").fetchone()[0]
+    if existing > 0:
+        return
+
+    achievements = [
+        # First steps
+        (1, 'first_taste', 'Erster Schluck', 'Probiere deinen ersten Whisky', '🥃', 'beginner', 'total_tastings', 1, None, 10),
+        (2, 'getting_started', 'Einsteiger', 'Probiere 5 verschiedene Whiskys', '🌟', 'beginner', 'total_tastings', 5, None, 25),
+        (3, 'enthusiast', 'Enthusiast', 'Probiere 25 verschiedene Whiskys', '⭐', 'collector', 'total_tastings', 25, None, 100),
+        (4, 'connoisseur', 'Kenner', 'Probiere 50 verschiedene Whiskys', '🏆', 'collector', 'total_tastings', 50, None, 250),
+        (5, 'master', 'Meister', 'Probiere 100 verschiedene Whiskys', '👑', 'collector', 'total_tastings', 100, None, 500),
+
+        # Region specialists
+        (10, 'islay_explorer', 'Islay Entdecker', 'Probiere 5 Whiskys aus Islay', '🏝️', 'region', 'region_count', 5, '{"region": "Islay"}', 50),
+        (11, 'islay_master', 'Islay Meister', 'Probiere 15 Whiskys aus Islay', '🔥', 'region', 'region_count', 15, '{"region": "Islay"}', 150),
+        (12, 'speyside_explorer', 'Speyside Entdecker', 'Probiere 5 Whiskys aus Speyside', '🌸', 'region', 'region_count', 5, '{"region": "Speyside"}', 50),
+        (13, 'speyside_master', 'Speyside Meister', 'Probiere 15 Whiskys aus Speyside', '🍯', 'region', 'region_count', 15, '{"region": "Speyside"}', 150),
+        (14, 'highland_explorer', 'Highland Entdecker', 'Probiere 5 Whiskys aus Highland', '⛰️', 'region', 'region_count', 5, '{"region": "Highland"}', 50),
+        (15, 'lowland_explorer', 'Lowland Entdecker', 'Probiere 5 Whiskys aus Lowland', '🌾', 'region', 'region_count', 5, '{"region": "Lowland"}', 50),
+        (16, 'campbeltown_explorer', 'Campbeltown Entdecker', 'Probiere 3 Whiskys aus Campbeltown', '⚓', 'region', 'region_count', 3, '{"region": "Campbeltown"}', 75),
+        (17, 'islands_explorer', 'Inseln Entdecker', 'Probiere 5 Whiskys von den Inseln', '🌊', 'region', 'region_count', 5, '{"region": "Islands"}', 50),
+
+        # Diversity achievements
+        (20, 'world_traveler', 'Weltreisender', 'Probiere Whiskys aus 3 verschiedenen Regionen', '🌍', 'diversity', 'unique_regions', 3, None, 50),
+        (21, 'globe_trotter', 'Globetrotter', 'Probiere Whiskys aus 5 verschiedenen Regionen', '✈️', 'diversity', 'unique_regions', 5, None, 100),
+        (22, 'distillery_hopper', 'Brennerei-Hopper', 'Probiere Whiskys von 10 verschiedenen Brennereien', '🏭', 'diversity', 'unique_distilleries', 10, None, 75),
+        (23, 'distillery_collector', 'Brennerei-Sammler', 'Probiere Whiskys von 25 verschiedenen Brennereien', '🗺️', 'diversity', 'unique_distilleries', 25, None, 200),
+
+        # Time-based achievements
+        (30, 'monthly_taster', 'Monatlicher Verkoster', 'Probiere 5 verschiedene Whiskys in einem Monat', '📅', 'time', 'monthly_tastings', 5, None, 50),
+        (31, 'weekly_warrior', 'Wöchentlicher Krieger', 'Probiere 3 verschiedene Whiskys in einer Woche', '⚔️', 'time', 'weekly_tastings', 3, None, 30),
+
+        # Special achievements
+        (40, 'vintage_hunter', 'Vintage Jäger', 'Probiere einen Whisky älter als 18 Jahre', '🎖️', 'special', 'whisky_age', 18, None, 75),
+        (41, 'antique_collector', 'Antiquitäten-Sammler', 'Probiere einen Whisky älter als 25 Jahre', '🏺', 'special', 'whisky_age', 25, None, 150),
+        (42, 'high_scorer', 'Hohe Ansprüche', 'Gib einem Whisky 10 Punkte', '💯', 'special', 'perfect_score', 1, None, 25),
+        (43, 'critical_eye', 'Kritisches Auge', 'Bewerte 10 Whiskys mit detaillierten Notizen', '🔍', 'special', 'detailed_notes', 10, None, 50),
+    ]
+
+    for ach in achievements:
+        conn.execute("""
+            INSERT INTO achievements (id, code, name, description, icon, category, requirement_type, requirement_value, requirement_extra, points)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, ach)
 
 
 # Distillery operations
@@ -685,6 +798,472 @@ def get_tasting(tasting_id: int):
         FROM tastings
         WHERE id = ?
     """, [tasting_id]).fetchone()
+    conn.close()
+    return result
+
+
+# Card operations
+def get_or_create_card(whisky_id: int) -> int:
+    """Get or create a card for a whisky. Returns card ID."""
+    conn = get_connection()
+
+    result = conn.execute(
+        "SELECT id FROM whisky_cards WHERE whisky_id = ?", [whisky_id]
+    ).fetchone()
+
+    if result:
+        conn.close()
+        return result[0]
+
+    # Create new card with rarity based on whisky properties
+    whisky = get_whisky(whisky_id)
+    if whisky:
+        # Determine rarity based on price and age
+        price = whisky[5] or 0
+        year = whisky[2] or 2020
+        age = 2024 - year if year else 0
+
+        if price > 200 or age > 25:
+            rarity = 'legendary'
+        elif price > 100 or age > 18:
+            rarity = 'epic'
+        elif price > 50 or age > 12:
+            rarity = 'rare'
+        else:
+            rarity = 'common'
+    else:
+        rarity = 'common'
+
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM whisky_cards").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO whisky_cards (id, whisky_id, card_rarity)
+        VALUES (?, ?, ?)
+    """, [new_id, whisky_id, rarity])
+
+    conn.close()
+    return new_id
+
+
+def unlock_card(user_name: str, whisky_id: int, rating_id: int = None) -> tuple:
+    """
+    Unlock a card for a user. Returns (card_id, is_new_unlock, rarity).
+    """
+    conn = get_connection()
+
+    # Check if already unlocked
+    existing = conn.execute("""
+        SELECT uc.id, wc.card_rarity FROM user_cards uc
+        JOIN whisky_cards wc ON uc.card_id = wc.id
+        WHERE uc.user_name = ? AND uc.whisky_id = ?
+    """, [user_name, whisky_id]).fetchone()
+
+    if existing:
+        conn.close()
+        return (existing[0], False, existing[1])
+
+    # Get or create the card
+    card_id = get_or_create_card(whisky_id)
+
+    # Get card rarity
+    rarity = conn.execute(
+        "SELECT card_rarity FROM whisky_cards WHERE id = ?", [card_id]
+    ).fetchone()[0]
+
+    # Unlock for user
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM user_cards").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO user_cards (id, user_name, card_id, whisky_id, rating_id)
+        VALUES (?, ?, ?, ?, ?)
+    """, [new_id, user_name, card_id, whisky_id, rating_id])
+
+    conn.close()
+    return (card_id, True, rarity)
+
+
+def get_user_cards(user_name: str) -> list:
+    """Get all unlocked cards for a user."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            uc.id, uc.whisky_id, wc.card_rarity, uc.unlocked_at,
+            w.name as whisky_name, d.name as distillery, d.region,
+            w.year, w.image_path
+        FROM user_cards uc
+        JOIN whisky_cards wc ON uc.card_id = wc.id
+        JOIN whiskies w ON uc.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        WHERE uc.user_name = ?
+        ORDER BY uc.unlocked_at DESC
+    """, [user_name]).fetchall()
+    conn.close()
+    return result
+
+
+def get_user_card_stats(user_name: str) -> dict:
+    """Get card statistics for a user."""
+    conn = get_connection()
+
+    total = conn.execute(
+        "SELECT COUNT(*) FROM user_cards WHERE user_name = ?", [user_name]
+    ).fetchone()[0]
+
+    by_rarity = conn.execute("""
+        SELECT wc.card_rarity, COUNT(*)
+        FROM user_cards uc
+        JOIN whisky_cards wc ON uc.card_id = wc.id
+        WHERE uc.user_name = ?
+        GROUP BY wc.card_rarity
+    """, [user_name]).fetchall()
+
+    all_whiskies = conn.execute("SELECT COUNT(*) FROM whiskies").fetchone()[0]
+
+    conn.close()
+
+    return {
+        'total': total,
+        'all_whiskies': all_whiskies,
+        'by_rarity': dict(by_rarity)
+    }
+
+
+# Achievement operations
+def get_all_achievements() -> list:
+    """Get all achievement definitions."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT id, code, name, description, icon, category,
+               requirement_type, requirement_value, requirement_extra, points
+        FROM achievements
+        ORDER BY category, points
+    """).fetchall()
+    conn.close()
+    return result
+
+
+def get_user_achievements(user_name: str) -> list:
+    """Get all unlocked achievements for a user."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            ua.id, a.code, a.name, a.description, a.icon,
+            a.category, a.points, ua.unlocked_at, ua.progress
+        FROM user_achievements ua
+        JOIN achievements a ON ua.achievement_id = a.id
+        WHERE ua.user_name = ?
+        ORDER BY ua.unlocked_at DESC
+    """, [user_name]).fetchall()
+    conn.close()
+    return result
+
+
+def get_user_achievement_progress(user_name: str) -> list:
+    """Get achievement progress for a user (including not-yet-unlocked)."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT
+            a.id, a.code, a.name, a.description, a.icon, a.category,
+            a.requirement_type, a.requirement_value, a.requirement_extra, a.points,
+            ua.unlocked_at, COALESCE(ua.progress, 0) as progress
+        FROM achievements a
+        LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_name = ?
+        ORDER BY a.category, a.points
+    """, [user_name]).fetchall()
+    conn.close()
+    return result
+
+
+def unlock_achievement(user_name: str, achievement_id: int) -> bool:
+    """Unlock an achievement for a user. Returns True if newly unlocked."""
+    conn = get_connection()
+
+    # Check if already unlocked
+    existing = conn.execute("""
+        SELECT id FROM user_achievements
+        WHERE user_name = ? AND achievement_id = ? AND unlocked_at IS NOT NULL
+    """, [user_name, achievement_id]).fetchone()
+
+    if existing:
+        conn.close()
+        return False
+
+    # Check for existing progress entry
+    progress_entry = conn.execute("""
+        SELECT id FROM user_achievements
+        WHERE user_name = ? AND achievement_id = ?
+    """, [user_name, achievement_id]).fetchone()
+
+    if progress_entry:
+        conn.execute("""
+            UPDATE user_achievements
+            SET unlocked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, [progress_entry[0]])
+    else:
+        max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM user_achievements").fetchone()[0]
+        new_id = max_id + 1
+
+        conn.execute("""
+            INSERT INTO user_achievements (id, user_name, achievement_id, unlocked_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, [new_id, user_name, achievement_id])
+
+    conn.close()
+    return True
+
+
+def update_achievement_progress(user_name: str, achievement_id: int, progress: int):
+    """Update progress for an achievement."""
+    conn = get_connection()
+
+    existing = conn.execute("""
+        SELECT id FROM user_achievements
+        WHERE user_name = ? AND achievement_id = ?
+    """, [user_name, achievement_id]).fetchone()
+
+    if existing:
+        conn.execute("""
+            UPDATE user_achievements SET progress = ? WHERE id = ?
+        """, [progress, existing[0]])
+    else:
+        max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM user_achievements").fetchone()[0]
+        new_id = max_id + 1
+
+        conn.execute("""
+            INSERT INTO user_achievements (id, user_name, achievement_id, progress)
+            VALUES (?, ?, ?, ?)
+        """, [new_id, user_name, achievement_id, progress])
+
+    conn.close()
+
+
+def get_user_tasting_stats(user_name: str) -> dict:
+    """Get tasting statistics for achievement checking."""
+    conn = get_connection()
+
+    # Total unique whiskies tasted
+    total_tastings = conn.execute("""
+        SELECT COUNT(DISTINCT whisky_id) FROM ratings WHERE participant_name = ?
+    """, [user_name]).fetchone()[0]
+
+    # Unique regions
+    unique_regions = conn.execute("""
+        SELECT COUNT(DISTINCT d.region)
+        FROM ratings r
+        JOIN whiskies w ON r.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        WHERE r.participant_name = ? AND d.region IS NOT NULL
+    """, [user_name]).fetchone()[0]
+
+    # Unique distilleries
+    unique_distilleries = conn.execute("""
+        SELECT COUNT(DISTINCT w.distillery_id)
+        FROM ratings r
+        JOIN whiskies w ON r.whisky_id = w.id
+        WHERE r.participant_name = ?
+    """, [user_name]).fetchone()[0]
+
+    # Region counts
+    region_counts = conn.execute("""
+        SELECT d.region, COUNT(DISTINCT r.whisky_id) as count
+        FROM ratings r
+        JOIN whiskies w ON r.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        WHERE r.participant_name = ? AND d.region IS NOT NULL
+        GROUP BY d.region
+    """, [user_name]).fetchall()
+
+    # Monthly tastings (current month)
+    monthly_tastings = conn.execute("""
+        SELECT COUNT(DISTINCT whisky_id)
+        FROM ratings
+        WHERE participant_name = ?
+        AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
+    """, [user_name]).fetchone()[0]
+
+    # Weekly tastings (current week)
+    weekly_tastings = conn.execute("""
+        SELECT COUNT(DISTINCT whisky_id)
+        FROM ratings
+        WHERE participant_name = ?
+        AND created_at >= DATE_TRUNC('week', CURRENT_DATE)
+    """, [user_name]).fetchone()[0]
+
+    # Max whisky age tasted
+    max_age = conn.execute("""
+        SELECT MAX(2024 - w.year)
+        FROM ratings r
+        JOIN whiskies w ON r.whisky_id = w.id
+        WHERE r.participant_name = ? AND w.year IS NOT NULL
+    """, [user_name]).fetchone()[0] or 0
+
+    # Perfect scores (10)
+    perfect_scores = conn.execute("""
+        SELECT COUNT(*) FROM ratings
+        WHERE participant_name = ? AND score = 10
+    """, [user_name]).fetchone()[0]
+
+    # Detailed notes count
+    detailed_notes = conn.execute("""
+        SELECT COUNT(*) FROM ratings
+        WHERE participant_name = ? AND notes IS NOT NULL AND LENGTH(notes) > 20
+    """, [user_name]).fetchone()[0]
+
+    conn.close()
+
+    return {
+        'total_tastings': total_tastings,
+        'unique_regions': unique_regions,
+        'unique_distilleries': unique_distilleries,
+        'region_counts': dict(region_counts),
+        'monthly_tastings': monthly_tastings,
+        'weekly_tastings': weekly_tastings,
+        'max_age': max_age,
+        'perfect_scores': perfect_scores,
+        'detailed_notes': detailed_notes
+    }
+
+
+def check_and_unlock_achievements(user_name: str) -> list:
+    """Check all achievements and unlock any that are completed. Returns list of newly unlocked."""
+    import json
+
+    stats = get_user_tasting_stats(user_name)
+    achievements = get_all_achievements()
+    newly_unlocked = []
+
+    for ach in achievements:
+        ach_id, code, name, desc, icon, category, req_type, req_value, req_extra, points = ach
+
+        # Check if already unlocked
+        conn = get_connection()
+        already_unlocked = conn.execute("""
+            SELECT 1 FROM user_achievements
+            WHERE user_name = ? AND achievement_id = ? AND unlocked_at IS NOT NULL
+        """, [user_name, ach_id]).fetchone()
+        conn.close()
+
+        if already_unlocked:
+            continue
+
+        # Check requirements
+        unlocked = False
+        progress = 0
+
+        if req_type == 'total_tastings':
+            progress = stats['total_tastings']
+            unlocked = progress >= req_value
+
+        elif req_type == 'unique_regions':
+            progress = stats['unique_regions']
+            unlocked = progress >= req_value
+
+        elif req_type == 'unique_distilleries':
+            progress = stats['unique_distilleries']
+            unlocked = progress >= req_value
+
+        elif req_type == 'region_count':
+            extra = json.loads(req_extra) if req_extra else {}
+            region = extra.get('region', '')
+            progress = stats['region_counts'].get(region, 0)
+            unlocked = progress >= req_value
+
+        elif req_type == 'monthly_tastings':
+            progress = stats['monthly_tastings']
+            unlocked = progress >= req_value
+
+        elif req_type == 'weekly_tastings':
+            progress = stats['weekly_tastings']
+            unlocked = progress >= req_value
+
+        elif req_type == 'whisky_age':
+            progress = stats['max_age']
+            unlocked = progress >= req_value
+
+        elif req_type == 'perfect_score':
+            progress = stats['perfect_scores']
+            unlocked = progress >= req_value
+
+        elif req_type == 'detailed_notes':
+            progress = stats['detailed_notes']
+            unlocked = progress >= req_value
+
+        # Update progress
+        update_achievement_progress(user_name, ach_id, progress)
+
+        # Unlock if completed
+        if unlocked:
+            unlock_achievement(user_name, ach_id)
+            newly_unlocked.append({
+                'id': ach_id,
+                'code': code,
+                'name': name,
+                'description': desc,
+                'icon': icon,
+                'points': points
+            })
+
+    return newly_unlocked
+
+
+def get_user_total_points(user_name: str) -> int:
+    """Get total achievement points for a user."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT COALESCE(SUM(a.points), 0)
+        FROM user_achievements ua
+        JOIN achievements a ON ua.achievement_id = a.id
+        WHERE ua.user_name = ? AND ua.unlocked_at IS NOT NULL
+    """, [user_name]).fetchone()[0]
+    conn.close()
+    return result
+
+
+# Barcode operations
+def get_whisky_by_barcode(barcode: str) -> tuple | None:
+    """Get whisky by EAN barcode."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT w.id, w.name, w.year, d.name as distillery, d.id as distillery_id,
+               w.price, w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown
+        FROM whisky_barcodes wb
+        JOIN whiskies w ON wb.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        WHERE wb.barcode = ?
+    """, [barcode]).fetchone()
+    conn.close()
+    return result
+
+
+def add_whisky_barcode(barcode: str, whisky_id: int):
+    """Add a barcode mapping for a whisky."""
+    conn = get_connection()
+
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM whisky_barcodes").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO whisky_barcodes (id, barcode, whisky_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT (barcode) DO UPDATE SET whisky_id = ?
+    """, [new_id, barcode, whisky_id, whisky_id])
+
+    conn.close()
+
+
+def get_all_barcodes() -> list:
+    """Get all barcode mappings."""
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT wb.barcode, w.id, w.name, d.name as distillery
+        FROM whisky_barcodes wb
+        JOIN whiskies w ON wb.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        ORDER BY w.name
+    """).fetchall()
     conn.close()
     return result
 
