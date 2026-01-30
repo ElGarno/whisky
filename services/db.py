@@ -89,6 +89,16 @@ def init_db():
         )
     """)
 
+    # Barcode mapping - maps EAN barcodes to whiskies
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS whisky_barcodes (
+            id INTEGER PRIMARY KEY,
+            barcode VARCHAR UNIQUE,
+            whisky_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.close()
 
 
@@ -687,6 +697,152 @@ def get_tasting(tasting_id: int):
     """, [tasting_id]).fetchone()
     conn.close()
     return result
+
+
+# Whisky rating operations
+def delete_whisky_ratings(whisky_id: int) -> int:
+    """
+    Delete all ratings for a specific whisky (both tasting and guest ratings).
+
+    Args:
+        whisky_id: The whisky ID
+
+    Returns:
+        Number of deleted ratings
+    """
+    conn = get_connection()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM ratings WHERE whisky_id = ?", [whisky_id]
+    ).fetchone()[0]
+
+    conn.execute("DELETE FROM ratings WHERE whisky_id = ?", [whisky_id])
+    conn.close()
+    return count
+
+
+def delete_whisky_guest_ratings(whisky_id: int) -> int:
+    """
+    Delete only guest ratings for a specific whisky (tasting_id = 0).
+
+    Args:
+        whisky_id: The whisky ID
+
+    Returns:
+        Number of deleted ratings
+    """
+    conn = get_connection()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM ratings WHERE whisky_id = ? AND tasting_id = 0", [whisky_id]
+    ).fetchone()[0]
+
+    conn.execute("DELETE FROM ratings WHERE whisky_id = ? AND tasting_id = 0", [whisky_id])
+    conn.close()
+    return count
+
+
+# Barcode operations
+def add_whisky_barcode(barcode: str, whisky_id: int) -> int:
+    """
+    Add a barcode mapping for a whisky.
+
+    Args:
+        barcode: The EAN/barcode string
+        whisky_id: The whisky ID to map to
+
+    Returns:
+        The new barcode mapping ID
+    """
+    conn = get_connection()
+
+    # Check if barcode already exists
+    existing = conn.execute(
+        "SELECT id, whisky_id FROM whisky_barcodes WHERE barcode = ?", [barcode]
+    ).fetchone()
+
+    if existing:
+        # Update existing mapping
+        conn.execute(
+            "UPDATE whisky_barcodes SET whisky_id = ? WHERE id = ?",
+            [whisky_id, existing[0]]
+        )
+        conn.close()
+        return existing[0]
+
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM whisky_barcodes").fetchone()[0]
+    new_id = max_id + 1
+
+    conn.execute("""
+        INSERT INTO whisky_barcodes (id, barcode, whisky_id)
+        VALUES (?, ?, ?)
+    """, [new_id, barcode, whisky_id])
+
+    conn.close()
+    return new_id
+
+
+def get_whisky_by_barcode(barcode: str):
+    """
+    Get a whisky by its barcode.
+
+    Args:
+        barcode: The EAN/barcode string
+
+    Returns:
+        Whisky tuple or None if not found
+    """
+    conn = get_connection()
+    result = conn.execute("""
+        SELECT w.id, w.name, w.year, d.name as distillery, d.id as distillery_id,
+               w.price, w.current_fill_ml, w.bottle_size_ml, w.image_path, w.info_markdown
+        FROM whisky_barcodes wb
+        JOIN whiskies w ON wb.whisky_id = w.id
+        LEFT JOIN distilleries d ON w.distillery_id = d.id
+        WHERE wb.barcode = ?
+    """, [barcode]).fetchone()
+    conn.close()
+    return result
+
+
+def get_whisky_barcode(whisky_id: int) -> str | None:
+    """
+    Get the barcode for a whisky.
+
+    Args:
+        whisky_id: The whisky ID
+
+    Returns:
+        Barcode string or None if not set
+    """
+    conn = get_connection()
+    result = conn.execute(
+        "SELECT barcode FROM whisky_barcodes WHERE whisky_id = ?", [whisky_id]
+    ).fetchone()
+    conn.close()
+    return result[0] if result else None
+
+
+def delete_whisky_barcode(whisky_id: int) -> bool:
+    """
+    Delete the barcode mapping for a whisky.
+
+    Args:
+        whisky_id: The whisky ID
+
+    Returns:
+        True if deleted, False if not found
+    """
+    conn = get_connection()
+    result = conn.execute(
+        "SELECT id FROM whisky_barcodes WHERE whisky_id = ?", [whisky_id]
+    ).fetchone()
+
+    if result:
+        conn.execute("DELETE FROM whisky_barcodes WHERE whisky_id = ?", [whisky_id])
+        conn.close()
+        return True
+
+    conn.close()
+    return False
 
 
 # Initialize on import
