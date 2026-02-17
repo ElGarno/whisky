@@ -191,17 +191,6 @@ if whisky_id:
                         )
                         st.success("🎉 Danke für deine Bewertung!")
 
-                    # Unlock card for this whisky
-                    card_id, is_new_card, rarity = db.unlock_card(guest_name.strip(), whisky_id)
-                    if is_new_card:
-                        rarity_icons = {'legendary': '✨', 'epic': '💜', 'rare': '💙', 'common': '⬜'}
-                        st.success(f"🎴 Neue Karte freigeschaltet: {rarity_icons.get(rarity, '')} {rarity.upper()}")
-
-                    # Check for new achievements
-                    newly_unlocked = db.check_and_unlock_achievements(guest_name.strip())
-                    for ach in newly_unlocked:
-                        st.success(f"🏆 Achievement: {ach['icon']} {ach['name']} (+{ach['points']} Punkte)")
-
                     st.balloons()
 
         # Bisherige Gast-Bewertungen (only in guest mode)

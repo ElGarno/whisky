@@ -549,17 +549,6 @@ with tab2:
                         if st.button("Speichern", key=f"save_{whisky[0]}_{participant}"):
                             notes = st.session_state.get(f"notes_{whisky[0]}_{participant}", "")
                             db.add_rating(tasting_id, whisky[0], participant, score, notes)
-
-                            # Unlock card for participant
-                            card_id, is_new, rarity = db.unlock_card(participant, whisky[0])
-                            if is_new:
-                                st.toast(f"🎴 {participant}: Neue Karte ({rarity})!")
-
-                            # Check achievements
-                            new_achs = db.check_and_unlock_achievements(participant)
-                            for ach in new_achs:
-                                st.toast(f"🏆 {participant}: {ach['icon']} {ach['name']}")
-
                             st.success("Gespeichert!")
                             st.rerun()
 

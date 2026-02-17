@@ -102,54 +102,6 @@ def init_db():
     conn.close()
 
 
-def _init_default_achievements(conn):
-    """Initialize default achievement definitions."""
-    existing = conn.execute("SELECT COUNT(*) FROM achievements").fetchone()[0]
-    if existing > 0:
-        return
-
-    achievements = [
-        # First steps
-        (1, 'first_taste', 'Erster Schluck', 'Probiere deinen ersten Whisky', '🥃', 'beginner', 'total_tastings', 1, None, 10),
-        (2, 'getting_started', 'Einsteiger', 'Probiere 5 verschiedene Whiskys', '🌟', 'beginner', 'total_tastings', 5, None, 25),
-        (3, 'enthusiast', 'Enthusiast', 'Probiere 25 verschiedene Whiskys', '⭐', 'collector', 'total_tastings', 25, None, 100),
-        (4, 'connoisseur', 'Kenner', 'Probiere 50 verschiedene Whiskys', '🏆', 'collector', 'total_tastings', 50, None, 250),
-        (5, 'master', 'Meister', 'Probiere 100 verschiedene Whiskys', '👑', 'collector', 'total_tastings', 100, None, 500),
-
-        # Region specialists
-        (10, 'islay_explorer', 'Islay Entdecker', 'Probiere 5 Whiskys aus Islay', '🏝️', 'region', 'region_count', 5, '{"region": "Islay"}', 50),
-        (11, 'islay_master', 'Islay Meister', 'Probiere 15 Whiskys aus Islay', '🔥', 'region', 'region_count', 15, '{"region": "Islay"}', 150),
-        (12, 'speyside_explorer', 'Speyside Entdecker', 'Probiere 5 Whiskys aus Speyside', '🌸', 'region', 'region_count', 5, '{"region": "Speyside"}', 50),
-        (13, 'speyside_master', 'Speyside Meister', 'Probiere 15 Whiskys aus Speyside', '🍯', 'region', 'region_count', 15, '{"region": "Speyside"}', 150),
-        (14, 'highland_explorer', 'Highland Entdecker', 'Probiere 5 Whiskys aus Highland', '⛰️', 'region', 'region_count', 5, '{"region": "Highland"}', 50),
-        (15, 'lowland_explorer', 'Lowland Entdecker', 'Probiere 5 Whiskys aus Lowland', '🌾', 'region', 'region_count', 5, '{"region": "Lowland"}', 50),
-        (16, 'campbeltown_explorer', 'Campbeltown Entdecker', 'Probiere 3 Whiskys aus Campbeltown', '⚓', 'region', 'region_count', 3, '{"region": "Campbeltown"}', 75),
-        (17, 'islands_explorer', 'Inseln Entdecker', 'Probiere 5 Whiskys von den Inseln', '🌊', 'region', 'region_count', 5, '{"region": "Islands"}', 50),
-
-        # Diversity achievements
-        (20, 'world_traveler', 'Weltreisender', 'Probiere Whiskys aus 3 verschiedenen Regionen', '🌍', 'diversity', 'unique_regions', 3, None, 50),
-        (21, 'globe_trotter', 'Globetrotter', 'Probiere Whiskys aus 5 verschiedenen Regionen', '✈️', 'diversity', 'unique_regions', 5, None, 100),
-        (22, 'distillery_hopper', 'Brennerei-Hopper', 'Probiere Whiskys von 10 verschiedenen Brennereien', '🏭', 'diversity', 'unique_distilleries', 10, None, 75),
-        (23, 'distillery_collector', 'Brennerei-Sammler', 'Probiere Whiskys von 25 verschiedenen Brennereien', '🗺️', 'diversity', 'unique_distilleries', 25, None, 200),
-
-        # Time-based achievements
-        (30, 'monthly_taster', 'Monatlicher Verkoster', 'Probiere 5 verschiedene Whiskys in einem Monat', '📅', 'time', 'monthly_tastings', 5, None, 50),
-        (31, 'weekly_warrior', 'Wöchentlicher Krieger', 'Probiere 3 verschiedene Whiskys in einer Woche', '⚔️', 'time', 'weekly_tastings', 3, None, 30),
-
-        # Special achievements
-        (40, 'vintage_hunter', 'Vintage Jäger', 'Probiere einen Whisky älter als 18 Jahre', '🎖️', 'special', 'whisky_age', 18, None, 75),
-        (41, 'antique_collector', 'Antiquitäten-Sammler', 'Probiere einen Whisky älter als 25 Jahre', '🏺', 'special', 'whisky_age', 25, None, 150),
-        (42, 'high_scorer', 'Hohe Ansprüche', 'Gib einem Whisky 10 Punkte', '💯', 'special', 'perfect_score', 1, None, 25),
-        (43, 'critical_eye', 'Kritisches Auge', 'Bewerte 10 Whiskys mit detaillierten Notizen', '🔍', 'special', 'detailed_notes', 10, None, 50),
-    ]
-
-    for ach in achievements:
-        conn.execute("""
-            INSERT INTO achievements (id, code, name, description, icon, category, requirement_type, requirement_value, requirement_extra, points)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, ach)
-
-
 # Distillery operations
 def get_or_create_distillery(name: str, region: str = None, country: str = None,
                               latitude: float = None, longitude: float = None) -> int:
