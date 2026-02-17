@@ -227,8 +227,15 @@ if whisky_id:
 
 else:
     # Admin-Modus: QR-Codes generieren
-    st.title("🎫 Gast-Bewertungsmodus")
-    st.write("Generiere QR-Codes für deine Flaschen, damit Gäste schnell bewerten können.")
+    st.title("🎫 Gast-Bewertungsmodus (ohne Tasting)")
+    st.write("""
+    Hier kannst du QR-Codes für einzelne Flaschen generieren. Gäste können diese scannen
+    und den Whisky jederzeit bewerten – **unabhängig von einer Verkostung**.
+
+    **Unterschied zu Tasting-Bewertungen:**
+    - **Tasting-Bewertungen** (über die Verkostungs-Seite): Teilnehmer mit PIN, zeitlich begrenzt, Teil einer Verkostungsrunde
+    - **Flaschen-Bewertungen** (diese Seite): Jeder kann jederzeit bewerten, z.B. bei spontanen Verkostungen oder um Feedback zu sammeln
+    """)
 
     whiskies = db.get_all_whiskies()
 
@@ -322,6 +329,28 @@ else:
                     for r in guest_ratings
                 ])
                 st.dataframe(df, use_container_width=True, hide_index=True)
+
+                # Delete button with confirmation
+                if "confirm_delete_guest" not in st.session_state:
+                    st.session_state.confirm_delete_guest = None
+
+                if st.session_state.confirm_delete_guest == whisky[0]:
+                    st.warning(f"Wirklich {len(guest_ratings)} Gast-Bewertungen löschen?")
+                    col_yes, col_no = st.columns(2)
+                    with col_yes:
+                        if st.button("Ja, löschen", key=f"confirm_del_{whisky[0]}"):
+                            count = db.delete_whisky_guest_ratings(whisky[0])
+                            st.session_state.confirm_delete_guest = None
+                            st.success(f"{count} Bewertungen gelöscht!")
+                            st.rerun()
+                    with col_no:
+                        if st.button("Abbrechen", key=f"cancel_del_{whisky[0]}"):
+                            st.session_state.confirm_delete_guest = None
+                            st.rerun()
+                else:
+                    if st.button(f"Alle Gast-Bewertungen löschen ({len(guest_ratings)})", key=f"del_{whisky[0]}"):
+                        st.session_state.confirm_delete_guest = whisky[0]
+                        st.rerun()
 
     # Alle QR-Codes auf einmal generieren
     st.divider()
