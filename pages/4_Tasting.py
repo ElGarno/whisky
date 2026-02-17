@@ -10,7 +10,9 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services import db, ai
+from services import barcode as barcode_service
 from services.auth import require_auth, show_logout_button
+from PIL import Image
 
 st.set_page_config(page_title="Verkostung", page_icon="🍷", layout="wide")
 
@@ -432,6 +434,81 @@ with tab2:
 
         st.divider()
 
+        # Barcode scanning as alternative to QR codes
+        with st.expander("📷 Barcode scannen (Alternative zu QR-Code)"):
+            if not barcode_service.is_available():
+                st.warning("Barcode-Scanning ist nicht verfügbar. Bitte `pyzbar` installieren.")
+            else:
+                st.info("Scanne den Barcode einer Flasche, um sie direkt zu bewerten.")
+
+                barcode_col1, barcode_col2 = st.columns(2)
+
+                with barcode_col1:
+                    camera_image = st.camera_input("Barcode fotografieren", key="tasting_barcode_cam")
+
+                with barcode_col2:
+                    uploaded_barcode = st.file_uploader(
+                        "Oder Bild hochladen",
+                        type=['jpg', 'jpeg', 'png'],
+                        key="tasting_barcode_upload"
+                    )
+
+                barcode_image = camera_image or uploaded_barcode
+
+                if barcode_image:
+                    image = Image.open(barcode_image)
+                    barcodes = barcode_service.decode_barcode(image)
+
+                    if not barcodes:
+                        st.warning("Kein Barcode erkannt. Bitte erneut versuchen.")
+                    else:
+                        ean = barcode_service.get_ean_barcode(barcodes)
+                        st.success(f"Barcode erkannt: **{ean}**")
+
+                        # Look up whisky
+                        whisky = db.get_whisky_by_barcode(ean)
+
+                        if whisky:
+                            whisky_id_scan = whisky[0]
+                            whisky_name = whisky[1]
+
+                            # Check if this whisky is in the current tasting
+                            if whisky_id_scan in whisky_ids:
+                                st.success(f"Whisky gefunden: **{whisky_name}** - Teil dieser Verkostung!")
+
+                                # Direct link to rating
+                                rating_url = f"{default_app_url}/Guest_Rating?tasting={tasting_id}&whisky={whisky_id_scan}"
+                                st.markdown(f"[🔗 Zur Bewertung]({rating_url})")
+
+                                # Generate QR for this specific whisky
+                                qr_b64 = generate_qr_base64(rating_url, size=6)
+                                st.image(f"data:image/png;base64,{qr_b64}", width=120)
+                            else:
+                                st.warning(f"**{whisky_name}** ist nicht Teil dieser Verkostung.")
+                        else:
+                            st.warning("Dieser Barcode ist nicht in der Datenbank registriert.")
+
+                            # Option to link barcode to a whisky in this tasting
+                            st.write("**Barcode zuordnen:**")
+                            tasting_whisky_options = {
+                                f"{db.get_whisky(wid)[1]}": wid
+                                for wid in whisky_ids if db.get_whisky(wid)
+                            }
+
+                            if tasting_whisky_options:
+                                selected = st.selectbox(
+                                    "Welcher Flasche gehört dieser Barcode?",
+                                    options=list(tasting_whisky_options.keys()),
+                                    key="assign_barcode_select"
+                                )
+
+                                if st.button("Barcode zuordnen", key="assign_barcode_btn"):
+                                    db.add_whisky_barcode(ean, tasting_whisky_options[selected])
+                                    st.success(f"Barcode wurde **{selected}** zugeordnet!")
+                                    st.rerun()
+
+        st.divider()
+
         # Whiskies in Reihenfolge abrufen
         tasting_whiskies = [db.get_whisky(wid) for wid in whisky_ids]
         existing_ratings = db.get_tasting_ratings(tasting_id)
@@ -472,6 +549,17 @@ with tab2:
                         if st.button("Speichern", key=f"save_{whisky[0]}_{participant}"):
                             notes = st.session_state.get(f"notes_{whisky[0]}_{participant}", "")
                             db.add_rating(tasting_id, whisky[0], participant, score, notes)
+
+                            # Unlock card for participant
+                            card_id, is_new, rarity = db.unlock_card(participant, whisky[0])
+                            if is_new:
+                                st.toast(f"🎴 {participant}: Neue Karte ({rarity})!")
+
+                            # Check achievements
+                            new_achs = db.check_and_unlock_achievements(participant)
+                            for ach in new_achs:
+                                st.toast(f"🏆 {participant}: {ach['icon']} {ach['name']}")
+
                             st.success("Gespeichert!")
                             st.rerun()
 
